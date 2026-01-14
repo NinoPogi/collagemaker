@@ -3,7 +3,6 @@
 import { auth } from '@clerk/nextjs/server'
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { JsonNullClass } from '@prisma/client/runtime/client'
 import { Prisma } from '@/lib/generated/prisma/client'
 import { imagekit } from '@/lib/imagekit'
 
@@ -35,9 +34,11 @@ export async function uploadImage(formData: FormData) {
 
 export async function createProject(data: {
   title: string
-  canvasState: JsonNullClass
+  canvasState: Prisma.InputJsonValue
   canvasWidth: number
   canvasHeight: number
+  gridRows?: number
+  gridCols?: number
 }) {
   try {
     const { userId } = await auth()
@@ -60,6 +61,8 @@ export async function createProject(data: {
         canvasState: data.canvasState,
         canvasWidth: data.canvasWidth,
         canvasHeight: data.canvasHeight,
+        gridRows: data.gridRows ?? 1,
+        gridCols: data.gridCols ?? 1,
         ownerId: user.id,
       },
     })

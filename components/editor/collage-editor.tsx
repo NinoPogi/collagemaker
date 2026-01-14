@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateProject, uploadImage } from '@/app/actions';
 import { Project } from '@/types/project';
-import { useCanvas } from './use-canvas';
 import EditorToolbar from './editor-toolbar';
+import { useLayerCanvas } from './use-layer-canvas';
 
 interface CollageEditorProps {
   project: Project;
@@ -15,46 +15,56 @@ export default function CollageEditor({ project }: CollageEditorProps) {
   const router = useRouter();
   const [title, setTitle] = useState(project.title);
   const [isSaving, setIsSaving] = useState(false);
-  
-  // 1. Use our custom hook
-  const { 
-    canvasRef, 
-    fabricRef, // Exposed if needed for direct access
-    addImage, 
-    addText, 
-    deleteActive, 
-    downloadCanvas,
-    getJsonState,
-    getThumbnail,
-    addImageFromUrl
-  } = useCanvas(project);
 
-  // 2. Handle Saving Logic
+  // Get grid configuration from project (with fallbacks)
+  const rows = project.gridRows || 1;
+  const cols = project.gridCols || 1;
+
+  // Use layer canvas hook (Smart Single Canvas)
+  const {
+    canvasRef,
+    activeCell,
+    setActiveCell,
+    addImageToActiveCell,
+    addTextToActiveCell,
+    deleteActive,
+    downloadCanvas,
+    generateThumbnail,
+    getJsonState
+  } = useLayerCanvas({
+    rows,
+    cols,
+    canvasWidth: project.canvasWidth,
+    canvasHeight: project.canvasHeight,
+    initialState: typeof project.canvasState === 'string'
+      ? JSON.parse(project.canvasState)
+      : project.canvasState,
+  });
+
+  // Handle Saving Logic
   const handleSave = async () => {
     setIsSaving(true);
     try {
       // Generate thumbnail
-      const thumbnailDataUrl = getThumbnail();
+      const thumbnailDataUrl = await generateThumbnail();
       let thumbnailUrl = project.thumbnailUrl;
 
       if (thumbnailDataUrl) {
-         // Upload thumbnail
-         // Convert data URL to blob or transmit as string (uploadImage handles base64 string)
-         const formData = new FormData();
-         formData.append('file', thumbnailDataUrl);
-         formData.append('fileName', `thumbnail-${project.id}.jpg`);
-         formData.append('useUniqueFileName', 'false');
-         
-         const uploadRes = await uploadImage(formData);
-         if (uploadRes.success && uploadRes.url) {
-            thumbnailUrl = uploadRes.url;
-         }
+        const formData = new FormData();
+        formData.append('file', thumbnailDataUrl);
+        formData.append('fileName', `thumbnail-${project.id}.jpg`);
+        formData.append('useUniqueFileName', 'false');
+
+        const uploadRes = await uploadImage(formData);
+        if (uploadRes.success && uploadRes.url) {
+          thumbnailUrl = uploadRes.url;
+        }
       }
 
       const canvasState = getJsonState();
       await updateProject(project.id, {
         title,
-        canvasState,
+        canvasState: canvasState ? JSON.parse(JSON.stringify(canvasState)) : null,
         thumbnailUrl: thumbnailUrl ?? undefined,
       });
     } catch (error) {
@@ -64,66 +74,94 @@ export default function CollageEditor({ project }: CollageEditorProps) {
     }
   };
 
-  const handleImageUpload = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', JSON.stringify(file)); // This won't work for File object directly over server actions like this usually needs FormData
-    // Actually we can pass FormData to server action.
-    // We need to append the file.
-  };
-
+  // Handle image upload
   const onAddImage = async (file: File) => {
-     // Upload first
-     const formData = new FormData();
-     // We need to convert file to base64 or just send FormData if server action supports it.
-     // Server action supports FormData taking 'file' as string | Blob?
-     // Actions.ts: const file = formData.get('file') as string; -> It expects string (base64) or maybe I should change it to handle File/Blob if possible?
-     // ImageKit node sdk upload method takes 'file' as "string | Buffer | ReadableStream". base64 string works.
-     // So let's convert File to base64 on client.
-     
-     const reader = new FileReader();
-     reader.readAsDataURL(file);
-     reader.onload = async (e) => {
-        const base64 = e.target?.result as string;
-        const formData = new FormData();
-        formData.append('file', base64);
-        formData.append('fileName', file.name);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
+      const formData = new FormData();
+      formData.append('file', base64);
+      formData.append('fileName', file.name);
 
-        const res = await uploadImage(formData);
-        if (res.success && res.url) {
-            addImageFromUrl(res.url);
-        } else {
-            alert('Image upload failed');
-        }
-     };
+      const res = await uploadImage(formData);
+      if (res.success && res.url) {
+        addImageToActiveCell(res.url);
+      } else {
+        alert('Image upload failed');
+      }
+    };
   };
 
-  // 3. Auto-save Interval
+  // Responsive Container sizing
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setContainerSize({ width, height });
+    });
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Auto-save Interval
   useEffect(() => {
     const timer = setInterval(() => {
-      // Only save if we have a canvas instance
-      if (fabricRef.current) {
-        handleSave();
-      }
+      handleSave();
     }, 30000);
     return () => clearInterval(timer);
-  }, [title]); // Re-create timer if title changes to capture new title
+  }, [title]);
+
+  // Calculate display scale (dynamically fitting container)
+  const padding = 32; // Safety padding
+  const availableWidth = Math.max(0, containerSize.width - padding);
+  const availableHeight = Math.max(0, containerSize.height - padding);
+
+  const scale = containerSize.width && containerSize.height ? Math.min(
+    availableWidth / project.canvasWidth,
+    availableHeight / project.canvasHeight,
+    1
+  ) : 0.1; // Default small scale to prevent initial blowup
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-      <EditorToolbar 
+      <EditorToolbar
         title={title}
         setTitle={setTitle}
         isSaving={isSaving}
         onBack={() => router.push('/dashboard')}
         onAddImage={onAddImage}
-        onAddText={addText}
+        onAddText={addTextToActiveCell}
         onDelete={deleteActive}
         onDownload={() => downloadCanvas(title)}
       />
 
-      <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
-        <div className="shadow-2xl border border-slate-200 dark:border-slate-700 bg-white">
-          <canvas ref={canvasRef} />
+      <div ref={containerRef} className="flex-1 flex items-center justify-center p-4 pb-28 md:pb-4 overflow-hidden">
+        <div className="flex flex-col items-center gap-4">
+          <div className="text-sm text-slate-600 dark:text-slate-400">
+             Active Cell: <span className="font-bold text-orange-500">{activeCell + 1}</span>
+          </div>
+
+          <div
+            className="shadow-2xl border border-slate-200 dark:border-slate-700 bg-white"
+            style={{
+              width: project.canvasWidth * scale,
+              height: project.canvasHeight * scale,
+            }}
+          >
+            <div
+              style={{
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+                width: project.canvasWidth,
+                height: project.canvasHeight,
+              }}
+            >
+              <canvas ref={canvasRef} />
+            </div>
+          </div>
         </div>
       </div>
     </div>

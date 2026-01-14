@@ -6,6 +6,8 @@ export interface Project {
   canvasWidth: number;
   canvasHeight: number;
   canvasState: unknown;
+  gridRows: number;
+  gridCols: number;
   thumbnailUrl?: string | null;
 }
 

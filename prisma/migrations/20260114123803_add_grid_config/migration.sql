@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Project" ADD COLUMN     "gridCols" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN     "gridRows" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN     "thumbnailUrl" TEXT;

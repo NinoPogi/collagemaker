@@ -23,16 +23,18 @@ model User {
 }
 
 model Project {
-  id          String   @id @default(cuid())
-  title       String
-  ownerId     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  canvasState Json
-  canvasWidth Int
+  id           String   @id @default(cuid())
+  title        String
+  ownerId      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  canvasState  Json
+  canvasWidth  Int
   canvasHeight Int
+  gridRows     Int      @default(1)
+  gridCols     Int      @default(1)
   thumbnailUrl String?
-  owner       User     @relation(fields: [ownerId], references: [id])
+  owner        User     @relation(fields: [ownerId], references: [id])
 
   @@index([ownerId])
 }

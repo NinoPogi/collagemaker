@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/actions';
 import { COLLAGE_SIZES, GRID_LAYOUTS } from '@/lib/collage-constants';
-import { initializeCanvas } from '@/lib/fabric-utils';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -31,17 +30,17 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
       const width = selectedSize.name === 'Custom' ? parseInt(customWidth) : selectedSize.width;
       const height = selectedSize.name === 'Custom' ? parseInt(customHeight) : selectedSize.height;
 
-      // Generate initial canvas state with Fabric.js
-      const canvasState = initializeCanvas(width, height, {
-        rows: selectedGrid.rows,
-        cols: selectedGrid.cols,
-      });
+      // Generate initial canvas state for multi-canvas grid
+      // Each cell will be initialized with an empty canvas state
+      const canvasState = { cells: {} };
 
       const result = await createProject({
         title: title || 'Untitled Collage',
-        canvasState: JSON.parse(canvasState),
+        canvasState: canvasState,
         canvasWidth: width,
         canvasHeight: height,
+        gridRows: selectedGrid.rows || 1,
+        gridCols: selectedGrid.cols || 1,
       });
 
       if (!result.success) {
