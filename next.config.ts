@@ -1,12 +1,12 @@
-/** @type {import('next').NextConfig} */
- 
-module.exports = {
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',
     },
   },
-    images: {
+  images: {
     remotePatterns: [
       {
         protocol: 'https',
@@ -16,4 +16,6 @@ module.exports = {
       },
     ],
   },
-}
+};
+
+export default nextConfig;

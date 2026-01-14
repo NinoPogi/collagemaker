@@ -71,7 +71,7 @@ export default function ProjectCard({ project, isHovered, onHover, onLeave }: Pr
         <div className="aspect-video bg-gradient-to-br from-orange-100 to-orange-200 dark:from-slate-700 dark:to-slate-600 relative overflow-hidden">
           {project.thumbnailUrl ? (
             <Image
-              src={project.thumbnailUrl}
+              src={`${project.thumbnailUrl}?v=${new Date(project.updatedAt).getTime()}`}
               alt={project.title}
               fill
               className="object-cover"
