@@ -31,6 +31,7 @@ model Project {
   canvasState Json
   canvasWidth Int
   canvasHeight Int
+  thumbnailUrl String?
   owner       User     @relation(fields: [ownerId], references: [id])
 
   @@index([ownerId])
