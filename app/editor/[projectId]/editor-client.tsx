@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateProject, uploadImage } from '@/app/actions';
 import { Project } from '@/types/project';
-import EditorToolbar from './editor-toolbar';
-import { useLayerCanvas } from './use-layer-canvas';
+import EditorToolbar from '../../../components/editor/editor-toolbar';
+import { useLayerCanvas } from '../../../components/editor/use-layer-canvas';
 
 interface CollageEditorProps {
   project: Project;
@@ -140,9 +140,6 @@ export default function CollageEditor({ project }: CollageEditorProps) {
 
       <div ref={containerRef} className="flex-1 flex items-center justify-center p-4 pb-28 md:pb-4 overflow-hidden">
         <div className="flex flex-col items-center gap-4">
-          <div className="text-sm text-slate-600 dark:text-slate-400">
-             Active Cell: <span className="font-bold text-orange-500">{activeCell + 1}</span>
-          </div>
 
           <div
             className="shadow-2xl border border-slate-200 dark:border-slate-700 bg-white"

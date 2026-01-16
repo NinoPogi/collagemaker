@@ -1,3 +1,4 @@
+import { SignInButton } from "@clerk/nextjs"
 
 
 const CTA = () => {
@@ -8,9 +9,11 @@ const CTA = () => {
             Ready to Create Something Amazing?
           </h3>
           <div className="space-y-4 mt-8" />
-          <button className="px-12 py-5 bg-white text-orange-600 text-xl font-bold rounded-full hover:shadow-2xl hover:scale-110 transition-all duration-300">
-            Get Started Free
-          </button>
+          <SignInButton mode='modal'>
+            <button className="px-12 py-5 bg-white text-orange-600 text-xl font-bold rounded-full hover:shadow-2xl hover:scale-110 transition-all duration-300">
+              Get Started Free
+            </button>
+          </SignInButton>
         </div>
       </section>
   )

@@ -4,18 +4,19 @@ import { NextResponse } from 'next/server'
 
 
 const isProtectedRoute = createRouteMatcher([
-  '/dashboard',
+  '/',
   '/editor/:projectId*',
 ])
 
 export default clerkMiddleware(async (auth, req) => {
-  // const { userId } = await auth()
+  const { userId } = await auth()
 
-  // if (isProtectedRoute(req) && !userId) {
-  //   const signInUrl = new URL('/sign-in', req.url)
-  //   signInUrl.searchParams.set('redirect_url', req.url)
-  //   return NextResponse.redirect(signInUrl)
-  // }
+  if (isProtectedRoute(req) && !userId) {
+    const signInUrl = new URL('/get-started', req.url)
+    return NextResponse.redirect(signInUrl)
+  } else if (createRouteMatcher(['/get-started'])(req) && userId) {
+    return NextResponse.redirect(new URL('/', req.url))
+  }
 })
 
 export const config = {

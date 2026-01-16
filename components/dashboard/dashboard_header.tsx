@@ -1,5 +1,7 @@
 'use client';
 
+import { SignedIn, UserButton } from "@clerk/nextjs";
+
 interface DashboardHeaderProps {
   projectCount: number;
   onNewProject: () => void;
@@ -20,6 +22,9 @@ export default function DashboardHeader({ projectCount, onNewProject }: Dashboar
             {projectCount} {projectCount === 1 ? 'project' : 'projects'}
           </p>
         </div>
+        <SignedIn>
+              <UserButton />
+        </SignedIn>
 {projectCount > 0 && (
           <button
             onClick={onNewProject}

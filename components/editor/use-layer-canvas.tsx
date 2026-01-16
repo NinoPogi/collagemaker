@@ -76,18 +76,6 @@ export function useLayerCanvas({
 
     fabricRef.current = canvas;
 
-    // Load state if exists
-    if (initialState) {
-       // Check if it's the old multi-canvas format (cells object)
-       if ('cells' in initialState) {
-          console.warn('Incompatible multi-canvas state found, starting fresh');
-       } else {
-          canvas.loadFromJSON(initialState).then(() => {
-             canvas.renderAll();
-          });
-       }
-    }
-
     // Grid Visuals (Internal Lines Only)
     const gridGroup: FabricObject[] = [];
     const cellWidth = canvasWidth / cols;

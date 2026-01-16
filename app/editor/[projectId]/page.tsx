@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import  prisma  from '@/lib/prisma';
-import CollageEditor from '@/components/editor/collage-editor';
+import CollageEditor from '@/app/editor/[projectId]/editor-client';
 
 interface ProjectPageProps {
   params: Promise<{
