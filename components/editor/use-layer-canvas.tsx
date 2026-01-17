@@ -1,29 +1,34 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Canvas, FabricImage, IText, Rect, FabricObject, Path } from 'fabric';
+import { Project } from '@/types/project';
 
 export interface LayerCanvasState {
   activeCellIndex: number;
 }
 
 interface UseLayerCanvasOptions {
-  rows: number;
-  cols: number;
-  canvasWidth: number;
-  canvasHeight: number;
-  initialState?: object | null;
+  project: Project;
+  onCanvasChange?: () => void;
 }
 
 export function useLayerCanvas({
-  rows,
-  cols,
-  canvasWidth,
-  canvasHeight,
-  initialState,
+  project,
+  onCanvasChange,
 }: UseLayerCanvasOptions) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const [activeCell, setActiveCell] = useState<number>(0);
   const initialized = useRef(false);
+  const canvasWidth = project.canvasWidth;
+  const canvasHeight = project.canvasHeight;
+  const initialState = typeof project.canvasState === 'string'
+    ? JSON.parse(project.canvasState)
+    : project.canvasState;  
+
+    // Get grid configuration from project (with fallbacks)
+  const rows = project.gridRows || 1;
+  const cols = project.gridCols || 1;
+
 
   // Helper to get cell dimensions and bounds
   const getCellBounds = useCallback((index: number) => {
@@ -65,7 +70,7 @@ export function useLayerCanvas({
   useEffect(() => {
     if (!canvasRef.current || initialized.current) return;
     initialized.current = true;
-
+    
     const canvas = new Canvas(canvasRef.current, {
       width: canvasWidth,
       height: canvasHeight,
@@ -76,48 +81,81 @@ export function useLayerCanvas({
 
     fabricRef.current = canvas;
 
-    // Grid Visuals (Internal Lines Only)
-    const gridGroup: FabricObject[] = [];
-    const cellWidth = canvasWidth / cols;
-    const cellHeight = canvasHeight / rows;
-
-    // Vertical lines
-    for (let c = 1; c < cols; c++) {
-      const x = c * cellWidth;
-      const pathData = `M 0 0 L 0 ${canvasHeight}`;
-      const line = new Path(pathData, {
-        left: x,
-        top: 0,
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-        originX: 'center',
-        originY: 'top',
+    // Grid Visuals Helper
+    const addGrid = () => {
+      // Clear existing grid lines first to prevent stacking
+      // We check for our specific tag 'grid-line' AND legacy lines that might have been saved
+      canvas.getObjects().forEach(obj => {
+         // @ts-ignore - 'id' is a custom property we're using
+         if (obj.id === 'grid-line' || (obj.type === 'path' && obj.stroke === '#e0e0e0' && !obj.selectable)) {
+            canvas.remove(obj);
+         }
       });
-      gridGroup.push(line);
-    }
 
-    // Horizontal lines
-    for (let r = 1; r < rows; r++) {
-      const y = r * cellHeight;
-      const pathData = `M 0 0 L ${canvasWidth} 0`;
-      const line = new Path(pathData, {
-        left: 0,
-        top: y,
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-        originX: 'left',
-        originY: 'center',
-      });
-      gridGroup.push(line);
+      const gridGroup: FabricObject[] = [];
+      const cellWidth = canvasWidth / cols;
+      const cellHeight = canvasHeight / rows;
+
+      // Vertical lines
+      for (let c = 1; c < cols; c++) {
+        const x = c * cellWidth;
+        const pathData = `M 0 0 L 0 ${canvasHeight}`;
+        const line = new Path(pathData, {
+          left: x,
+          top: 0,
+          stroke: '#e0e0e0',
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+          originX: 'center',
+          originY: 'top',
+          // @ts-ignore
+          id: 'grid-line', // Tag for easy removal
+          excludeFromExport: true // Custom flag we can use to filter before save if needed
+        });
+        gridGroup.push(line);
+      }
+
+      // Horizontal lines
+      for (let r = 1; r < rows; r++) {
+        const y = r * cellHeight;
+        const pathData = `M 0 0 L ${canvasWidth} 0`;
+        const line = new Path(pathData, {
+          left: 0,
+          top: y,
+          stroke: '#e0e0e0',
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+          originX: 'left',
+          originY: 'center',
+          // @ts-ignore
+          id: 'grid-line',
+          excludeFromExport: true
+        });
+        gridGroup.push(line);
+      }
+      gridGroup.forEach(obj => canvas.add(obj));
+      gridGroup.forEach(obj => canvas.sendObjectToBack(obj));
+    };
+
+    // Load State Logic - Only run if canvas is empty or force reload needed
+    if (initialState && canvas.getObjects().length === 0) {
+        // console.log('Loading state:', initialState); 
+        canvas.loadFromJSON(initialState).then(() => {
+            // Aggressive cleanup of any lines that might have been loaded from JSON
+            addGrid(); 
+            canvas.renderAll();
+        }).catch(err => {
+            console.warn('JSON Load Warning (might be partial):', err);
+            // Even if it failed, we want a grid
+            addGrid();
+            canvas.renderAll();
+        });
+    } else {
+        // Just add grid if we're not loading state (or state is already there)
+        addGrid();
     }
-    // We don't add grid as objects to avoid messing with export/serialization? 
-    // Actually, adding them as non-selectable background objects is good.
-    gridGroup.forEach(obj => canvas.add(obj));
-    gridGroup.forEach(obj => canvas.sendObjectToBack(obj));
 
     // Event Listeners
     canvas.on('mouse:down', (e) => {
@@ -134,18 +172,33 @@ export function useLayerCanvas({
       }
     });
 
-    // Object boundary constraints (Optional: strictly keep image center in cell)
     canvas.on('object:moving', (e) => {
        const obj = e.target;
-       if (!obj || !obj.clipPath) return; // Only constrain clipped objects (images)
+       if (!obj || !obj.clipPath) return; 
     });
+
+    // AutoSave & Event Hooks
+    const debounce = (func: Function, timeout = 2000) => {
+      let timer: NodeJS.Timeout;
+      return (...args: any) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { func.apply(args); }, timeout);
+      };
+    };
+
+    const triggerSave = debounce(() => {
+        if (onCanvasChange) onCanvasChange();
+    }, 1000); // 1s debounce is better UX
+
+    canvas.on('object:modified', triggerSave);
+    canvas.on('object:removed', triggerSave);
 
     return () => {
       canvas.dispose();
       fabricRef.current = null;
       initialized.current = false;
     };
-  }, [canvasWidth, canvasHeight, rows, cols, initialState]);
+  }, [canvasWidth, canvasHeight, rows, cols]); // Removed initialState to prevent re-init loops
 
   // Actions
   const addImageToActiveCell = useCallback((url: string) => {
@@ -225,11 +278,21 @@ export function useLayerCanvas({
   
   const generateThumbnail = useCallback(async () => {
     if (!fabricRef.current) return null;
-    return fabricRef.current.toDataURL({
+    
+    // Create a temporary white background for the thumbnail (JPEG doesn't verify transparency)
+    const originalBg = fabricRef.current.backgroundColor;
+    fabricRef.current.backgroundColor = '#ffffff';
+    
+    const dataUrl = fabricRef.current.toDataURL({
         format: 'jpeg',
         quality: 0.8,
-        multiplier: 0.5
-     });
+        multiplier: 0.5,
+    });
+
+    // Restore original background (though it should be white anyway)
+    fabricRef.current.backgroundColor = originalBg;
+    
+    return dataUrl;
   }, []);
 
   const getJsonState = useCallback(() => {

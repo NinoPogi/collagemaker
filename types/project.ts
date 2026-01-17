@@ -10,7 +10,6 @@ export interface Project {
   gridCols: number;
   thumbnailUrl?: string | null;
 }
-
 export interface CollageSize {
   name: string;
   width: number;
@@ -26,3 +25,5 @@ export interface GridLayout {
   cols: number;
   preview: string; // SVG or description
 }
+
+

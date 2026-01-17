@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateProject, uploadImage } from '@/app/actions';
 import { Project } from '@/types/project';
-import EditorToolbar from '../../../components/editor/editor-toolbar';
+import EditorHeader from '@/components/editor/editor-header';
+import EditorSidebar from '@/components/editor/editor-sidebar';
 import { useLayerCanvas } from '../../../components/editor/use-layer-canvas';
 
 interface CollageEditorProps {
@@ -15,50 +16,45 @@ export default function CollageEditor({ project }: CollageEditorProps) {
   const router = useRouter();
   const [title, setTitle] = useState(project.title);
   const [isSaving, setIsSaving] = useState(false);
-
-  // Get grid configuration from project (with fallbacks)
-  const rows = project.gridRows || 1;
-  const cols = project.gridCols || 1;
+  const [activeTab, setActiveTab] = useState('add');
 
   // Use layer canvas hook (Smart Single Canvas)
   const {
     canvasRef,
-    activeCell,
-    setActiveCell,
     addImageToActiveCell,
     addTextToActiveCell,
-    deleteActive,
     downloadCanvas,
     generateThumbnail,
     getJsonState
   } = useLayerCanvas({
-    rows,
-    cols,
-    canvasWidth: project.canvasWidth,
-    canvasHeight: project.canvasHeight,
-    initialState: typeof project.canvasState === 'string'
-      ? JSON.parse(project.canvasState)
-      : project.canvasState,
+    project,
+    onCanvasChange: () => {
+       handleSave();
+    }
   });
 
   // Handle Saving Logic
-  const handleSave = async () => {
+  const handleSave = async (isManual = false) => {
     setIsSaving(true);
     try {
-      // Generate thumbnail
-      const thumbnailDataUrl = await generateThumbnail();
       let thumbnailUrl = project.thumbnailUrl;
 
+      // Update thumbnail only on manual save to save bandwidth/speed?
+      // Or just do it every time if it's fast enough. 
+      // Let's do it every time for now to keep it synced.
+      const thumbnailDataUrl = await generateThumbnail();
       if (thumbnailDataUrl) {
-        const formData = new FormData();
-        formData.append('file', thumbnailDataUrl);
-        formData.append('fileName', `thumbnail-${project.id}.jpg`);
-        formData.append('useUniqueFileName', 'false');
-
-        const uploadRes = await uploadImage(formData);
-        if (uploadRes.success && uploadRes.url) {
-          thumbnailUrl = uploadRes.url;
-        }
+        // We can optimize this to only upload if changed, but for now upload.
+         // (Omitted for brevity in this snippet, assuming existing upload logic is sound)
+         // ... Re-add upload logic here if needed, or simpler:
+         const formData = new FormData();
+         formData.append('file', thumbnailDataUrl);
+         formData.append('fileName', `thumbnail-${project.id}.jpg`);
+         formData.append('useUniqueFileName', 'false');
+         const uploadRes = await uploadImage(formData);
+         if (uploadRes.success && uploadRes.url) {
+            thumbnailUrl = uploadRes.url;
+         }
       }
 
       const canvasState = getJsonState();
@@ -93,6 +89,9 @@ export default function CollageEditor({ project }: CollageEditorProps) {
     };
   };
 
+  // Hidden File Input Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Responsive Container sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -106,13 +105,6 @@ export default function CollageEditor({ project }: CollageEditorProps) {
     return () => observer.disconnect();
   }, []);
 
-  // Auto-save Interval
-  useEffect(() => {
-    const timer = setInterval(() => {
-      handleSave();
-    }, 30000);
-    return () => clearInterval(timer);
-  }, [title]);
 
   // Calculate display scale (dynamically fitting container)
   const padding = 32; // Safety padding
@@ -123,44 +115,67 @@ export default function CollageEditor({ project }: CollageEditorProps) {
     availableWidth / project.canvasWidth,
     availableHeight / project.canvasHeight,
     1
-  ) : 0.1; // Default small scale to prevent initial blowup
+  ) : 0.1;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-      <EditorToolbar
-        title={title}
-        setTitle={setTitle}
-        isSaving={isSaving}
-        onBack={() => router.push('/dashboard')}
-        onAddImage={onAddImage}
-        onAddText={addTextToActiveCell}
-        onDelete={deleteActive}
-        onDownload={() => downloadCanvas(title)}
-      />
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
+       {/* Header */}
+       <EditorHeader 
+          title={title}
+          setTitle={setTitle}
+          isSaving={isSaving}
+          onBack={() => router.push('/')}
+          onDownload={() => downloadCanvas(title)}
+          onManualSave={() => handleSave(true)}
+       />
 
-      <div ref={containerRef} className="flex-1 flex items-center justify-center p-4 pb-28 md:pb-4 overflow-hidden">
-        <div className="flex flex-col items-center gap-4">
+       {/* Main Content Area */}
+       <div className="flex flex-1 overflow-hidden relative">
+          
+          {/* Sidebar / Bottom Bar */}
+          <EditorSidebar 
+             activeTab={activeTab}
+             setActiveTab={setActiveTab}
+             onAddText={addTextToActiveCell}
+             onAddImageInput={() => fileInputRef.current?.click()}
+          />
+          
+          {/* Hidden File Input for Sidebar */}
+          <input 
+            type="file" 
+            hidden 
+            ref={fileInputRef} 
+            accept="image/*" 
+            onChange={(e) => {
+               if (e.target.files?.[0]) {
+                  onAddImage(e.target.files[0]);
+                  e.target.value = ''; // Reset
+               }
+            }} 
+          />
 
-          <div
-            className="shadow-2xl border border-slate-200 dark:border-slate-700 bg-white"
-            style={{
-              width: project.canvasWidth * scale,
-              height: project.canvasHeight * scale,
-            }}
-          >
-            <div
-              style={{
-                transform: `scale(${scale})`,
-                transformOrigin: 'top left',
-                width: project.canvasWidth,
-                height: project.canvasHeight,
-              }}
-            >
-              <canvas ref={canvasRef} />
-            </div>
-          </div>
-        </div>
-      </div>
+          {/* Canvas Area */}
+          <main ref={containerRef} className="flex-1 flex items-center justify-center p-4 pb-24 md:pb-4 bg-dots-pattern">
+              <div 
+                className="shadow-2xl border border-slate-200 dark:border-slate-700 bg-white transition-all duration-300 ease-out"
+                style={{
+                  width: project.canvasWidth * scale,
+                  height: project.canvasHeight * scale,
+                }}
+              >
+                <div
+                  style={{
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'top left',
+                    width: project.canvasWidth,
+                    height: project.canvasHeight,
+                  }}
+                >
+                  <canvas ref={canvasRef} />
+                </div>
+              </div>
+          </main>
+       </div>
     </div>
   );
 }
