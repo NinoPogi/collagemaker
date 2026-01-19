@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { Prisma } from '@/lib/generated/prisma/client'
 import { imagekit } from '@/lib/imagekit'
 
-export async function uploadImage(formData: FormData) {
+export async function uploadImage(formData: FormData, projectId?: string) {
   try {
     const file = formData.get('file') as string;
     const fileName = formData.get('fileName') as string || 'image.png';
@@ -16,11 +16,25 @@ export async function uploadImage(formData: FormData) {
       throw new Error('No file provided');
     }
 
+    const folder = projectId ? `projects/${projectId}` : 'uploads';
+
     const result = await imagekit.upload({
-      file, // it can be base64 or binary
+      file, 
       fileName,
       useUniqueFileName: useUniqueFileName, 
+      folder, 
     });
+
+    if (projectId) {
+       await prisma.projectImage.create({
+          data: {
+             url: result.url,
+             thumbnail: result.thumbnailUrl,
+             projectId: projectId
+          }
+       });
+       revalidatePath(`/editor/${projectId}`);
+    }
 
     return { success: true, url: result.url };
   } catch (error) {
@@ -30,6 +44,19 @@ export async function uploadImage(formData: FormData) {
       error: error instanceof Error ? error.message : 'Upload failed' 
     };
   }
+}
+
+export async function getProjectImages(projectId: string) {
+   try {
+      const images = await prisma.projectImage.findMany({
+         where: { projectId },
+         orderBy: { createdAt: 'desc' }
+      });
+      return images;
+   } catch (error) {
+      console.error('Fetch images error:', error);
+      return [];
+   }
 }
 
 export async function createProject(data: {

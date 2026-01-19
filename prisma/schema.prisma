@@ -7,6 +7,7 @@
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -22,6 +23,17 @@ model User {
   projects  Project[] 
 }
 
+model ProjectImage {
+  id        String   @id @default(cuid())
+  url       String
+  thumbnail String? // Optional: for faster loading
+  projectId String
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
 model Project {
   id           String   @id @default(cuid())
   title        String
@@ -34,6 +46,7 @@ model Project {
   gridRows     Int      @default(1)
   gridCols     Int      @default(1)
   thumbnailUrl String?
+  images       ProjectImage[]
   owner        User     @relation(fields: [ownerId], references: [id])
 
   @@index([ownerId])

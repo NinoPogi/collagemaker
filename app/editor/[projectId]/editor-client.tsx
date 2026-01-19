@@ -7,12 +7,14 @@ import { Project } from '@/types/project';
 import EditorHeader from '@/components/editor/editor-header';
 import EditorSidebar from '@/components/editor/editor-sidebar';
 import { useLayerCanvas } from '../../../components/editor/use-layer-canvas';
+import { ProjectImage } from '@/lib/generated/prisma/client';
 
 interface CollageEditorProps {
   project: Project;
+  initialImages: ProjectImage[];
 }
 
-export default function CollageEditor({ project }: CollageEditorProps) {
+export default function CollageEditor({ project, initialImages }: CollageEditorProps) {
   const router = useRouter();
   const [title, setTitle] = useState(project.title);
   const [isSaving, setIsSaving] = useState(false);
@@ -129,6 +131,7 @@ export default function CollageEditor({ project }: CollageEditorProps) {
           onManualSave={() => handleSave(true)}
        />
 
+
        {/* Main Content Area */}
        <div className="flex flex-1 overflow-hidden relative">
           
@@ -137,23 +140,10 @@ export default function CollageEditor({ project }: CollageEditorProps) {
              activeTab={activeTab}
              setActiveTab={setActiveTab}
              onAddText={addTextToActiveCell}
-             onAddImageInput={() => fileInputRef.current?.click()}
+             projectId={project.id}
+             projectImages={initialImages}
           />
           
-          {/* Hidden File Input for Sidebar */}
-          <input 
-            type="file" 
-            hidden 
-            ref={fileInputRef} 
-            accept="image/*" 
-            onChange={(e) => {
-               if (e.target.files?.[0]) {
-                  onAddImage(e.target.files[0]);
-                  e.target.value = ''; // Reset
-               }
-            }} 
-          />
-
           {/* Canvas Area */}
           <main ref={containerRef} className="flex-1 flex items-center justify-center p-4 pb-24 md:pb-4 bg-dots-pattern">
               <div 

@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import  prisma  from '@/lib/prisma';
 import CollageEditor from '@/app/editor/[projectId]/editor-client';
+import { getProjectImages } from '@/app/actions';
 
 interface ProjectPageProps {
   params: Promise<{
@@ -29,5 +30,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     redirect('/dashboard');
   }
 
-  return <CollageEditor project={project} />;
+  // Fetch project images
+  const images = await getProjectImages(projectId);
+
+  return <CollageEditor project={project} initialImages={images} />;
 }

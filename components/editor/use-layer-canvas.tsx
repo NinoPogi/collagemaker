@@ -193,19 +193,80 @@ export function useLayerCanvas({
     canvas.on('object:modified', triggerSave);
     canvas.on('object:removed', triggerSave);
 
+    canvas.on('object:removed', triggerSave);
+
+    // Initial Render
+    canvas.renderAll();
+
+    // Native Drag & Drop Support
+    const upperCanvasEl = canvas.upperCanvasEl;
+    const wrapper = upperCanvasEl.parentElement; // Fabric wrapper
+    
+    if (wrapper) {
+       wrapper.addEventListener('dragover', handleDragOver);
+       wrapper.addEventListener('drop', handleDrop);
+    }
+
     return () => {
       canvas.dispose();
       fabricRef.current = null;
       initialized.current = false;
+      if (wrapper) {
+          wrapper.removeEventListener('dragover', handleDragOver);
+          wrapper.removeEventListener('drop', handleDrop);
+      }
     };
   }, [canvasWidth, canvasHeight, rows, cols]); // Removed initialState to prevent re-init loops
 
-  // Actions
-  const addImageToActiveCell = useCallback((url: string) => {
+  // DND Handlers
+  const handleDragOver = useCallback((e: DragEvent) => {
+     e.preventDefault();
+     e.dataTransfer!.dropEffect = 'copy';
+  }, []);
+
+  const handleDrop = useCallback((e: DragEvent) => {
+      e.preventDefault();
+      if (!fabricRef.current) return;
+
+      const payload = e.dataTransfer?.getData('payload');
+      if (!payload) return;
+
+      const { url } = JSON.parse(payload);
+      if (!url) return;
+
+      // Coordinate Calculation (handling CSS scale)
+      const canvas = fabricRef.current;
+      const upperCanvasEl = canvas.upperCanvasEl; 
+      const rect = upperCanvasEl.getBoundingClientRect(); // Visual rect (scaled by CSS)
+      
+      const x = (e.clientX - rect.left) / (rect.width / canvasWidth);
+      const y = (e.clientY - rect.top) / (rect.height / canvasHeight);
+
+      // Determine Cell
+      const col = Math.floor(x / (canvasWidth / cols));
+      const row = Math.floor(y / (canvasHeight / rows));
+      const index = row * cols + col;
+
+      if (index >= 0 && index < rows * cols) {
+         setActiveCell(index);
+         // Small timeout to allow state update? strictly setActiveCell is async but addImage uses param?
+         // Actually addImageToActiveCell uses proper param or state. 
+         // Let's modify addImageToCell to accept index directly or reuse existing.
+         // Existing uses `activeCell` state which might be stale in this callback closure?
+         // Ah, `handleDrop` is a closure from the render. `activeCell` might be old.
+         // Better to implement `addImageToCell(index, url)` helper that doesn't rely on state.
+         addImageToCell(index, url);
+      }
+
+  }, [canvasWidth, canvasHeight, cols, rows]);
+
+  // Refactor addImage to take index
+  const addImageToCell = useCallback((cellIndex: number, url: string) => {
     if (!fabricRef.current) return;
+    const canvas = fabricRef.current; // Stable ref
 
     FabricImage.fromURL(url, { crossOrigin: 'anonymous' }).then((img) => {
-      const bounds = getCellBounds(activeCell);
+      const bounds = getCellBounds(cellIndex);
       
       // Scale image to cover the cell (like object-fit: cover)
       const scale = Math.max(
@@ -222,14 +283,27 @@ export function useLayerCanvas({
         originX: 'center',
         originY: 'center',
         // Apply Clip Path
-        clipPath: createClipRect(activeCell)
+        clipPath: createClipRect(cellIndex)
       });
 
-      fabricRef.current!.add(img);
-      fabricRef.current!.setActiveObject(img);
-      fabricRef.current!.renderAll();
+      // Remove existing image in this cell IF strict mode? 
+      // Optional: Remove previous images intersecting this cell center?
+      // For now just add on top.
+
+      canvas.add(img);
+      canvas.setActiveObject(img);
+      canvas.renderAll();
+      
+      // Trigger autosave
+      canvas.fire('object:added', { target: img });
     });
-  }, [activeCell, getCellBounds, createClipRect]);
+  }, [getCellBounds, createClipRect]);
+
+
+  // Actions
+  const addImageToActiveCell = useCallback((url: string) => {
+     addImageToCell(activeCell, url);
+  }, [activeCell, addImageToCell]);
 
   const addTextToActiveCell = useCallback(() => {
     if (!fabricRef.current) return;
