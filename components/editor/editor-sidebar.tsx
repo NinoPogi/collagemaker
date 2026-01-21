@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Upload, Type, Image as ImageIcon, Grid3X3, Settings, Move, X } from 'lucide-react';
+import { Upload, Type, Image as ImageIcon, Grid3X3, Settings, Move, X, LayoutGrid } from 'lucide-react';
 import { ProjectImage } from '@/lib/generated/prisma/client';
 import ImagesPanel from './panels/images-panel';
 import TextPanel from './panels/text-panel';
 import TransformPanel from './panels/transform-panel';
+import BorderPanel from './panels/border-panel';
 import { ChevronRight, ChevronLeft, Crop } from 'lucide-react';
 
 interface EditorSidebarProps {
@@ -17,6 +18,10 @@ interface EditorSidebarProps {
   onSelectImage: (image: ProjectImage) => void;
   activeObjectProperties: any; // We can type this strictly later if needed
   onUpdateActiveObject: (updates: any) => void;
+  activeObjectFilters: any;
+  onUpdateActiveImageFilter: (type: string, value: number | boolean) => void;
+  gridConfig: { color: string, thickness: number };
+  onUpdateGridConfig: (updates: any) => void;
 }
 
 export default function EditorSidebar({
@@ -29,13 +34,18 @@ export default function EditorSidebar({
   setIsExpanded,
   onSelectImage,
   activeObjectProperties,
-  onUpdateActiveObject
+  onUpdateActiveObject,
+  activeObjectFilters,
+  onUpdateActiveImageFilter,
+  gridConfig,
+  onUpdateGridConfig
 }: EditorSidebarProps) {
   
   const tabs = [
     { id: 'upload', icon: <Upload size={20} />, label: 'Upload', disabled: false },
     { id: 'images', icon: <ImageIcon size={20} />, label: 'Images' },
     { id: 'text', icon: <Type size={20} />, label: 'Text' }, 
+    { id: 'border', icon: <LayoutGrid size={20} />, label: 'Border' },
     // { id: 'crop', icon: <Crop size={20} />, label: 'Crop', disabled: true }, 
   ];
 
@@ -63,13 +73,21 @@ export default function EditorSidebar({
                   onSelectImage={onSelectImage} 
               />;
           case 'images':
-              return <TransformPanel />;
+              return <TransformPanel 
+                   activeFilters={activeObjectFilters}
+                   onUpdateFilter={onUpdateActiveImageFilter}
+              />;
           case 'text':
               return <TextPanel 
                  onAddText={onAddText} 
                  properties={activeObjectProperties}
                  onUpdate={onUpdateActiveObject}
               />;
+           case 'border':
+               return <BorderPanel 
+                   config={gridConfig}
+                   onUpdate={onUpdateGridConfig}
+               />;
           default:
               return null;
       }
@@ -130,7 +148,7 @@ export default function EditorSidebar({
       
       {/* Mobile Panel Overlay */}
       {isExpanded && activeTab !== 'crop' && (
-          <div className="md:hidden fixed inset-x-0 bottom-0 top-16 bg-white dark:bg-slate-800 z-40 rounded-t-2xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] overflow-y-auto transform transition-transform duration-300 ease-in-out p-4 pb-24">
+          <div className="md:hidden fixed inset-x-0 bottom-0 h-[50vh] bg-white dark:bg-slate-800 z-40 rounded-t-2xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] overflow-y-auto transform transition-transform duration-300 ease-in-out p-4 pb-24 border-t border-slate-200 dark:border-slate-700">
                {/* Mobile Header for Panel */}
                <div className="flex justify-between items-center mb-4">
                   <h3 className="font-bold capitalize">{tabs.find(t=>t.id===activeTab)?.label}</h3>

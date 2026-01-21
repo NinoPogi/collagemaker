@@ -103,7 +103,7 @@ export default function TextPanel({ onAddText, properties, onUpdate }: TextPanel
           </div>
 
           {/* Size & Family */}
-          <div className="space-y-3">
+          <div className="space-y-2 mb-[8em]">
               <div>
                  <label className="text-[10px] text-slate-400 mb-1 block">Font Size</label>
                  <input 

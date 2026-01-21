@@ -37,13 +37,35 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
     activeObjectRect,
     isDragging,
     activeObjectProperties,
-    updateActiveObject
+    updateActiveObject,
+    activeObjectFilters,
+    updateActiveImageFilter,
+    gridConfig,
+    updateGridConfig
   } = useLayerCanvas({
     project,
     onCanvasChange: () => {
        handleSave();
     }
   });
+
+  // Auto-switch tabs based on selection
+  useEffect(() => {
+     if (activeObjectRect) {
+         if (activeObjectRect.type === 'image') {
+             setActiveTab('images');
+             setIsSidebarOpen(true);
+         } else if (activeObjectRect.type === 'i-text' || activeObjectRect.type === 'text') {
+             setActiveTab('text');
+             setIsSidebarOpen(true);
+         }
+     } else {
+         // No selection -> Active Cell changed or just deselected
+         // User wants to open upload tab
+         setActiveTab('upload');
+         setIsSidebarOpen(true);
+     }
+  }, [activeObjectRect]); // Dependency on rect change (selection change)
 
   // Handle Saving Logic
   const handleSave = async (isManual = false) => {
@@ -151,6 +173,10 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
              projectImages={initialImages}
              activeObjectProperties={activeObjectProperties}
              onUpdateActiveObject={updateActiveObject}
+             activeObjectFilters={activeObjectFilters}
+             onUpdateActiveImageFilter={updateActiveImageFilter}
+             gridConfig={gridConfig}
+             onUpdateGridConfig={updateGridConfig}
              onSelectImage={(image) => {
                  addImageToActiveCell(image.url);
                  // Auto-close on mobile

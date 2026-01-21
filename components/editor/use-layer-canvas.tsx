@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Canvas, FabricImage, IText, Rect, FabricObject, Path, InteractiveFabricObject, } from 'fabric';
+import { Canvas, FabricImage, IText, Rect, FabricObject, Path, InteractiveFabricObject, filters } from 'fabric';
 import { Project } from '@/types/project';
 
 export interface LayerCanvasState {
@@ -21,15 +21,17 @@ export function useLayerCanvas({
   const [isObjectSelected, setIsObjectSelected] = useState(false);
   const [activeObjectRect, setActiveObjectRect] = useState<{ top: number; left: number; width: number; height: number; type: string; } | null>(null);
   const [activeObjectProperties, setActiveObjectProperties] = useState<any>(null);
+  const [activeObjectFilters, setActiveObjectFilters] = useState<any>(null);
+  const [gridConfig, setGridConfig] = useState({ color: '#e0e0e0', thickness: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const initialized = useRef(false);
   const canvasWidth = project.canvasWidth;
   const canvasHeight = project.canvasHeight;
   const initialState = typeof project.canvasState === 'string'
     ? JSON.parse(project.canvasState)
-    : project.canvasState;  
+    : project.canvasState;
 
-    // Get grid configuration from project (with fallbacks)
+  // Get grid configuration from project (with fallbacks)
   const rows = project.gridRows || 1;
   const cols = project.gridCols || 1;
 
@@ -84,95 +86,43 @@ export function useLayerCanvas({
     });
 
     InteractiveFabricObject.ownDefaults = {
-    ...InteractiveFabricObject.ownDefaults,
-    cornerStrokeColor: 'blue',
-    cornerColor: 'lightblue',
-    cornerStyle: 'circle',
-    padding: 10,
-    transparentCorners: false,
-    cornerDashArray: [2, 2],
-    borderColor: 'orange',
-    borderDashArray: [3, 1, 3],
-    borderScaleFactor: 4,
-}
+      ...InteractiveFabricObject.ownDefaults,
+      cornerStrokeColor: 'blue',
+      cornerColor: 'lightblue',
+      cornerStyle: 'circle',
+      padding: 10,
+      transparentCorners: false,
+      cornerDashArray: [2, 2],
+      borderColor: 'orange',
+      borderDashArray: [3, 1, 3],
+      borderScaleFactor: 4,
+    }
 
     fabricRef.current = canvas;
 
-    // Grid Visuals Helper
+
+    // Helper defined inside to access local scope vars easily, 
+    // but better if outside so we can call it when config changes.
+    // However, to fix the structure quickly, I'll define it here for init, 
+    // and rely on updateGridConfig to trigger refreshes via modified/re-add logic.
+    // Actually, let's keep it here for INIT.
     const addGrid = () => {
-      // Clear existing grid lines first to prevent stacking
-      // We check for our specific tag 'grid-line' AND legacy lines that might have been saved
-      canvas.getObjects().forEach(obj => {
-         // @ts-ignore - 'id' is a custom property we're using
-         if (obj.id === 'grid-line' || (obj.type === 'path' && obj.stroke === '#e0e0e0' && !obj.selectable)) {
-            canvas.remove(obj);
-         }
-      });
-
-      const gridGroup: FabricObject[] = [];
-      const cellWidth = canvasWidth / cols;
-      const cellHeight = canvasHeight / rows;
-
-      // Vertical lines
-      for (let c = 1; c < cols; c++) {
-        const x = c * cellWidth;
-        const pathData = `M 0 0 L 0 ${canvasHeight}`;
-        const line = new Path(pathData, {
-          left: x,
-          top: 0,
-          stroke: '#e0e0e0',
-          strokeWidth: 1,
-          selectable: false,
-          evented: false,
-          originX: 'center',
-          originY: 'top',
-          // @ts-ignore
-          id: 'grid-line', // Tag for easy removal
-          excludeFromExport: true // Custom flag we can use to filter before save if needed
-        });
-        gridGroup.push(line);
-      }
-
-      // Horizontal lines
-      for (let r = 1; r < rows; r++) {
-        const y = r * cellHeight;
-        const pathData = `M 0 0 L ${canvasWidth} 0`;
-        const line = new Path(pathData, {
-          left: 0,
-          top: y,
-          stroke: '#e0e0e0',
-          strokeWidth: 1,
-          selectable: false,
-          evented: false,
-          originX: 'left',
-          originY: 'center',
-          // @ts-ignore
-          id: 'grid-line',
-          excludeFromExport: true
-        });
-        gridGroup.push(line);
-      }
-      gridGroup.forEach(obj => canvas.add(obj));
-      gridGroup.forEach(obj => canvas.sendObjectToBack(obj));
+       // Defined below but reused here for initial load?
+       // Just call the reusable function if possible.
+       // But reusable function needs closure vars.
+       // Let's rely on the separate `useEffect` for grid rendering.
     };
-
-    // Load State Logic - Only run if canvas is empty or force reload needed
-    if (initialState && canvas.getObjects().length === 0) {
-        // console.log('Loading state:', initialState); 
-        canvas.loadFromJSON(initialState).then(() => {
-            // Aggressive cleanup of any lines that might have been loaded from JSON
-            addGrid(); 
-            canvas.renderAll();
-        }).catch(err => {
-            console.warn('JSON Load Warning (might be partial):', err);
-            // Even if it failed, we want a grid
-            addGrid();
-            canvas.renderAll();
-        });
-    } else {
-        // Just add grid if we're not loading state (or state is already there)
-        addGrid();
-    }
+    
+    // Load State Logic
+    if (initialState) {
+         if (initialState.gridConfig) {
+             setGridConfig(initialState.gridConfig);
+         }
+         
+         canvas.loadFromJSON(initialState).then(() => {
+             canvas.renderAll();
+         }).catch(console.warn);
+    } 
 
     // Event Listeners
     canvas.on('mouse:down', (e) => {
@@ -183,7 +133,7 @@ export function useLayerCanvas({
       const col = Math.floor(pointer.x / (canvasWidth / cols));
       const row = Math.floor(pointer.y / (canvasHeight / rows));
       const index = row * cols + col;
-      
+
       if (index >= 0 && index < rows * cols) {
         setActiveCell(index);
       }
@@ -191,8 +141,8 @@ export function useLayerCanvas({
 
 
     canvas.on('object:moving', (e) => {
-       const obj = e.target;
-       if (!obj || !obj.clipPath) return; 
+      const obj = e.target;
+      if (!obj || !obj.clipPath) return;
     });
 
     // AutoSave & Event Hooks
@@ -205,68 +155,92 @@ export function useLayerCanvas({
     };
 
     const triggerSave = debounce(() => {
-        if (onCanvasChange) onCanvasChange();
-    }, 1000); // 1s debounce is better UX
+      if (onCanvasChange) onCanvasChange();
+    }, 1000); 
 
     // Selection Events
     const handleSelection = () => {
-       const active = canvas.getActiveObject();
-       setIsObjectSelected(!!active);
+      const active = canvas.getActiveObject();
+      setIsObjectSelected(!!active);
 
-       if (active) {
-          const bound = active.getBoundingRect();
-          setActiveObjectRect({
-             top: bound.top,
-             left: bound.left,
-             width: bound.width,
-             height: bound.height,
-             type: active.type
+      if (active) {
+        const bound = active.getBoundingRect();
+        setActiveObjectRect({
+          top: bound.top,
+          left: bound.left,
+          width: bound.width,
+          height: bound.height,
+          type: active.type
+        });
+
+        // Extract properties if text
+        if (active.type === 'i-text' || active.type === 'text') {
+          setActiveObjectProperties({
+            fontFamily: (active as IText).fontFamily,
+            fontSize: (active as IText).fontSize,
+            fill: (active as IText).fill,
+            textAlign: (active as IText).textAlign,
+            fontWeight: (active as IText).fontWeight,
+            fontStyle: (active as IText).fontStyle,
           });
-
-          // Extract properties if text
-          if (active.type === 'i-text' || active.type === 'text') {
-             setActiveObjectProperties({
-                fontFamily: (active as IText).fontFamily,
-                fontSize: (active as IText).fontSize,
-                fill: (active as IText).fill,
-                textAlign: (active as IText).textAlign,
-                fontWeight: (active as IText).fontWeight,
-                fontStyle: (active as IText).fontStyle,
-             });
-          } else {
-             // We can extend this for other objects later
-             setActiveObjectProperties(null);
-          }
-
-       } else {
-          setActiveObjectRect(null);
+        } else {
           setActiveObjectProperties(null);
-       }
+        }
+
+        // Extract Filters if Image
+        if (active.type === 'image') {
+          const img = active as FabricImage;
+          const filtersState: any = {
+            saturation: 0,
+            contrast: 0,
+            hue: 0,
+            pixelate: 0,
+            sepia: false
+          };
+
+          img.filters?.forEach((f: any) => {
+            if (f.type === 'Saturation') filtersState.saturation = f.saturation;
+            if (f.type === 'Contrast') filtersState.contrast = f.contrast;
+            if (f.type === 'HueRotation') filtersState.hue = f.rotation;
+            if (f.type === 'Pixelate') filtersState.pixelate = f.blocksize;
+            if (f.type === 'Sepia') filtersState.sepia = true;
+          });
+          setActiveObjectFilters(filtersState);
+        } else {
+          setActiveObjectFilters(null);
+        }
+
+      } else {
+        setActiveObjectRect(null);
+        setActiveObjectProperties(null);
+        setActiveObjectFilters(null);
+      }
     };
 
     const handleObjectModified = () => {
-        handleSelection(); // Re-calculate bounds
-        triggerSave();
+      handleSelection(); // Re-calculate bounds
+      triggerSave();
     };
 
     canvas.on('selection:created', handleSelection);
     canvas.on('selection:updated', handleSelection);
     canvas.on('selection:cleared', () => {
-       setIsObjectSelected(false);
-       setActiveObjectRect(null);
-       setActiveObjectProperties(null);
+      setIsObjectSelected(false);
+      setActiveObjectRect(null);
+      setActiveObjectProperties(null);
+      setActiveObjectFilters(null);
     });
-    
+
     // Track movement for dynamic menu
     const handleTransformStart = () => {
-        handleSelection();
-        setIsDragging(true);
+      handleSelection();
+      setIsDragging(true);
     };
 
     const handleInteractionEnd = () => {
-        setIsDragging(false);
-        handleSelection(); // Update final position
-        triggerSave(); // Ensure save happens on end
+      setIsDragging(false);
+      handleSelection(); // Update final position
+      triggerSave(); // Ensure save happens on end
     };
 
     canvas.on('object:moving', handleTransformStart);
@@ -274,10 +248,7 @@ export function useLayerCanvas({
     canvas.on('object:rotating', handleTransformStart);
     canvas.on('object:resizing', handleTransformStart);
 
-    canvas.on('mouse:up', handleInteractionEnd); 
-    // canvas.on('object:modified') is also good but mouse:up covers non-modifying interactions too if needed, 
-    // but strictly for "not being dragged", mouse:up is the interaction end.
-
+    canvas.on('mouse:up', handleInteractionEnd);
     canvas.on('object:modified', handleObjectModified);
     canvas.on('object:removed', triggerSave);
 
@@ -287,10 +258,10 @@ export function useLayerCanvas({
     // Native Drag & Drop Support
     const upperCanvasEl = canvas.upperCanvasEl;
     const wrapper = upperCanvasEl.parentElement; // Fabric wrapper
-    
+
     if (wrapper) {
-       wrapper.addEventListener('dragover', handleDragOver);
-       wrapper.addEventListener('drop', handleDrop);
+      wrapper.addEventListener('dragover', handleDragOver);
+      wrapper.addEventListener('drop', handleDrop);
     }
 
     return () => {
@@ -298,90 +269,180 @@ export function useLayerCanvas({
       fabricRef.current = null;
       initialized.current = false;
       if (wrapper) {
-          wrapper.removeEventListener('dragover', handleDragOver);
-          wrapper.removeEventListener('drop', handleDrop);
+        wrapper.removeEventListener('dragover', handleDragOver);
+        wrapper.removeEventListener('drop', handleDrop);
       }
     };
-  }, [canvasWidth, canvasHeight, rows, cols]); // Removed initialState to prevent re-init loops
+  }, [canvasWidth, canvasHeight, rows, cols]);
+
+  // Separate Effect for Grid Rendering (Responsive to Config Changes)
+  useEffect(() => {
+      if (!fabricRef.current) return;
+      const canvas = fabricRef.current;
+      
+      // Grid Creation Logic
+      const addGrid = () => {
+        // Clear existing grid lines first to prevent stacking
+        canvas.getObjects().forEach(obj => {
+           // @ts-ignore
+           if (obj.id === 'grid-line' || (obj.type === 'path' && obj.stroke === '#e0e0e0' && !obj.selectable)) {
+              canvas.remove(obj);
+           }
+        });
+  
+        const gridGroup: FabricObject[] = [];
+        const cellWidth = canvasWidth / cols;
+        const cellHeight = canvasHeight / rows;
+  
+        // Vertical lines
+        for (let c = 1; c < cols; c++) {
+          const x = c * cellWidth;
+          const pathData = `M 0 0 L 0 ${canvasHeight}`;
+          const line = new Path(pathData, {
+            left: x,
+            top: 0,
+            stroke: gridConfig.color,
+            strokeWidth: gridConfig.thickness,
+            selectable: false,
+            evented: false,
+            originX: 'center',
+            originY: 'top',
+            // @ts-ignore
+            id: 'grid-line',
+            excludeFromExport: true 
+          });
+          gridGroup.push(line);
+        }
+  
+        // Horizontal lines
+        for (let r = 1; r < rows; r++) {
+          const y = r * cellHeight;
+          const pathData = `M 0 0 L ${canvasWidth} 0`;
+          const line = new Path(pathData, {
+            left: 0,
+            top: y,
+            stroke: gridConfig.color,
+            strokeWidth: gridConfig.thickness,
+            selectable: false,
+            evented: false,
+            originX: 'left',
+            originY: 'center',
+            // @ts-ignore
+            id: 'grid-line',
+            excludeFromExport: true
+          });
+          gridGroup.push(line);
+        }
+        
+        gridGroup.forEach(obj => canvas.add(obj));
+
+        // Layering Enforcement: Images < Grid < Text
+        // 1. Send all images to back first
+        canvas.getObjects().forEach(obj => {
+            if (obj.type === 'image') canvas.sendObjectToBack(obj);
+        });
+  
+        // 2. Bring grid lines forward (above images)
+         canvas.getObjects().forEach(obj => {
+            // @ts-ignore
+            if (obj.id === 'grid-line') canvas.bringObjectToFront(obj);
+        });
+  
+        // 3. Bring text to very front (above grid)
+        canvas.getObjects().forEach(obj => {
+            if (obj.type === 'i-text' || obj.type === 'text') canvas.bringObjectToFront(obj);
+        });
+        
+        // 4. Highlight always on top
+        const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+        if (highlight) canvas.bringObjectToFront(highlight);
+        
+        canvas.requestRenderAll();
+      };
+      
+      addGrid();
+
+  }, [gridConfig, canvasWidth, canvasHeight, rows, cols]);
+
 
   // DND Handlers
   const handleDragOver = useCallback((e: DragEvent) => {
-     e.preventDefault();
-     e.dataTransfer!.dropEffect = 'copy';
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'copy';
   }, []);
 
   const handleDrop = useCallback((e: DragEvent) => {
-      e.preventDefault();
-      if (!fabricRef.current) return;
+    e.preventDefault();
+    if (!fabricRef.current) return;
 
-      const payload = e.dataTransfer?.getData('payload');
-      if (!payload) return;
+    const payload = e.dataTransfer?.getData('payload');
+    if (!payload) return;
 
-      const { url } = JSON.parse(payload);
-      if (!url) return;
+    const { url } = JSON.parse(payload);
+    if (!url) return;
 
-      // Coordinate Calculation (handling CSS scale)
-      const canvas = fabricRef.current;
-      const upperCanvasEl = canvas.upperCanvasEl; 
-      const rect = upperCanvasEl.getBoundingClientRect(); // Visual rect (scaled by CSS)
-      
-      const x = (e.clientX - rect.left) / (rect.width / canvasWidth);
-      const y = (e.clientY - rect.top) / (rect.height / canvasHeight);
+    const canvas = fabricRef.current;
+    const upperCanvasEl = canvas.upperCanvasEl;
+    const rect = upperCanvasEl.getBoundingClientRect();
 
-      // Determine Cell
-      const col = Math.floor(x / (canvasWidth / cols));
-      const row = Math.floor(y / (canvasHeight / rows));
-      const index = row * cols + col;
+    const x = (e.clientX - rect.left) / (rect.width / canvasWidth);
+    const y = (e.clientY - rect.top) / (rect.height / canvasHeight);
 
-      if (index >= 0 && index < rows * cols) {
-         setActiveCell(index);
-         // Small timeout to allow state update? strictly setActiveCell is async but addImage uses param?
-         // Actually addImageToActiveCell uses proper param or state. 
-         // Let's modify addImageToCell to accept index directly or reuse existing.
-         // Existing uses `activeCell` state which might be stale in this callback closure?
-         // Ah, `handleDrop` is a closure from the render. `activeCell` might be old.
-         // Better to implement `addImageToCell(index, url)` helper that doesn't rely on state.
-         addImageToCell(index, url);
-      }
+    const col = Math.floor(x / (canvasWidth / cols));
+    const row = Math.floor(y / (canvasHeight / rows));
+    const index = row * cols + col;
+
+    if (index >= 0 && index < rows * cols) {
+      setActiveCell(index);
+      addImageToCell(index, url);
+    }
 
   }, [canvasWidth, canvasHeight, cols, rows]);
 
   // Refactor addImage to take index
   const addImageToCell = useCallback((cellIndex: number, url: string) => {
     if (!fabricRef.current) return;
-    const canvas = fabricRef.current; // Stable ref
+    const canvas = fabricRef.current;
 
     FabricImage.fromURL(url, { crossOrigin: 'anonymous' }).then((img) => {
       const bounds = getCellBounds(cellIndex);
-      
-      // Scale image to cover the cell (like object-fit: cover)
+
       const scale = Math.max(
         bounds.width / img.width!,
         bounds.height / img.height!
       );
-      
+
       img.scale(scale);
-      
-      // Center in cell using center coordinates
+
       img.set({
         left: bounds.centerX,
         top: bounds.centerY,
         originX: 'center',
         originY: 'center',
-        // Apply Clip Path
         clipPath: createClipRect(cellIndex)
       });
 
-      // Remove existing image in this cell IF strict mode? 
-      // Optional: Remove previous images intersecting this cell center?
-      // For now just add on top.
-
       canvas.add(img);
       canvas.setActiveObject(img);
+      
+      // Ensure layering is respected on add
+      canvas.sendObjectToBack(img);
+      // But wait, if we send to back, we might hide it behind background? 
+      // Background is color.
+      // We want behind grid.
+      // Re-trigger grid layering logic?
+      // Or just ensure grid is on top.
+      const gridLines = canvas.getObjects().filter((o: any) => o.id === 'grid-line');
+      gridLines.forEach(l => canvas.bringObjectToFront(l));
+      
+      // And Text on top of Grid
+      const texts = canvas.getObjects().filter((o: any) => o.type === 'i-text' || o.type === 'text');
+      texts.forEach(t => canvas.bringObjectToFront(t));
+      
+      const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+      if (highlight) canvas.bringObjectToFront(highlight);
 
       canvas.renderAll();
-      
-      // Trigger autosave
       canvas.fire('object:added', { target: img });
     });
   }, [getCellBounds, createClipRect]);
@@ -389,13 +450,12 @@ export function useLayerCanvas({
 
   // Actions
   const addImageToActiveCell = useCallback((url: string) => {
-     addImageToCell(activeCell, url);
+    addImageToCell(activeCell, url);
   }, [activeCell, addImageToCell]);
 
   const addTextToActiveCell = useCallback(() => {
     if (!fabricRef.current) return;
-    
-    // Text is global, but we can spawn it centered on the active cell
+
     const bounds = getCellBounds(activeCell);
 
     const text = new IText('Type your text', {
@@ -406,7 +466,6 @@ export function useLayerCanvas({
       fontSize: 40,
       fontFamily: 'Inter, sans-serif',
       fill: '#333333',
-      // No clipPath means it floats on top!
     });
 
     fabricRef.current.add(text);
@@ -415,148 +474,181 @@ export function useLayerCanvas({
   }, [activeCell, getCellBounds]);
 
   const deleteActiveObject = useCallback(() => {
-      if (!fabricRef.current) return;
-      const active = fabricRef.current.getActiveObject();
-      if (active) {
-          fabricRef.current.remove(active);
-          fabricRef.current.discardActiveObject();
-          fabricRef.current.renderAll(); // Auto-save triggers on 'object:removed'
-          setIsObjectSelected(false);
-      }
+    if (!fabricRef.current) return;
+    const active = fabricRef.current.getActiveObject();
+    if (active) {
+      fabricRef.current.remove(active);
+      fabricRef.current.discardActiveObject();
+      fabricRef.current.renderAll();
+      setIsObjectSelected(false);
+    }
   }, []);
 
   const updateActiveObject = useCallback((updates: Partial<FabricObject>) => {
-      if (!fabricRef.current) return;
-      const active = fabricRef.current.getActiveObject();
-      if (active) {
-          active.set(updates);
-          active.setCoords(); // Update hit box
-          fabricRef.current.requestRenderAll();
-          
-          // Manually trigger updates
-          if (active.type === 'i-text' || active.type === 'text') {
-              // Update state locally so UI reflects change immediately
-               setActiveObjectProperties((prev: any) => ({ ...prev, ...updates }));
-          }
+    if (!fabricRef.current) return;
+    const active = fabricRef.current.getActiveObject();
+    if (active) {
+      active.set(updates);
+      active.setCoords();
+      fabricRef.current.requestRenderAll();
 
-          // Trigger save
-          fabricRef.current.fire('object:modified', { target: active });
+      if (active.type === 'i-text' || active.type === 'text') {
+        setActiveObjectProperties((prev: any) => ({ ...prev, ...updates }));
       }
+
+      fabricRef.current.fire('object:modified', { target: active });
+    }
+  }, []);
+
+  const updateActiveImageFilter = useCallback((type: string, value: number | boolean) => {
+    if (!fabricRef.current) return;
+    const active = fabricRef.current.getActiveObject() as FabricImage;
+    if (!active || active.type !== 'image') return;
+
+    if (!active.filters) active.filters = [];
+
+    // @ts-ignore
+    const FilterClass = filters[type];
+    if (!FilterClass) return;
+
+    const index = active.filters.findIndex(f => f.type === type);
+
+    if (type === 'Sepia') {
+      if (value) {
+        if (index === -1) active.filters.push(new FilterClass());
+      } else {
+        if (index > -1) active.filters.splice(index, 1);
+      }
+    } else {
+      let options: any = {};
+      if (type === 'Saturation') options.saturation = value;
+      if (type === 'Contrast') options.contrast = value;
+      if (type === 'HueRotation') options.rotation = value;
+      if (type === 'Pixelate') options.blocksize = value;
+
+      if (index > -1) {
+          active.filters[index] = new FilterClass(options);
+      } else {
+          active.filters.push(new FilterClass(options));
+      }
+    }
+
+    active.applyFilters();
+    fabricRef.current.requestRenderAll();
+    setActiveObjectFilters((prev: any) => ({ ...prev, [type.toLowerCase().replace('rotation', '')]: value }));
+    fabricRef.current.fire('object:modified', { target: active });
+
+  }, []);
+
+  const updateGridConfig = useCallback((updates: Partial<{ color: string, thickness: number }>) => {
+    setGridConfig(prev => ({ ...prev, ...updates }));
+    if (fabricRef.current) {
+        setTimeout(() => {
+           if (fabricRef.current) fabricRef.current.fire('object:modified');
+        }, 100);
+    }
   }, []);
 
   const downloadCanvas = useCallback(async (title: string) => {
-     if (!fabricRef.current) return;
-     const canvas = fabricRef.current; // Stable ref
-
-     // 1. Handle Background (Make opaque white)
-     const originalBg = canvas.backgroundColor;
-     canvas.backgroundColor = '#ffffff';
-
-     // 2. Hide Highlight
-     const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
-     const wasVisible = highlight ? highlight.visible : false;
-     if (highlight) highlight.visible = false;
-
-     // 3. Export
-     const dataURL = canvas.toDataURL({
-        format: 'png',
-        quality: 1,
-        multiplier: 2
-     });
-
-     // 4. Restore State
-     if (highlight) highlight.visible = wasVisible;
-     canvas.backgroundColor = originalBg;
-     canvas.requestRenderAll();
-
-     const link = document.createElement('a');
-     link.download = `${title}.png`;
-     link.href = dataURL;
-     link.click();
-  }, []);
-  
-  const generateThumbnail = useCallback(async () => {
-    if (!fabricRef.current) return null;
+    if (!fabricRef.current) return;
     const canvas = fabricRef.current;
 
-    // 1. Handle Background
     const originalBg = canvas.backgroundColor;
     canvas.backgroundColor = '#ffffff';
-    
-    // 2. Hide Highlight
+
     const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
     const wasVisible = highlight ? highlight.visible : false;
     if (highlight) highlight.visible = false;
 
-    // 3. Export
-    const dataUrl = canvas.toDataURL({
-        format: 'jpeg',
-        quality: 0.8,
-        multiplier: 0.5,
+    const dataURL = canvas.toDataURL({
+      format: 'png',
+      quality: 1,
+      multiplier: 2
     });
 
-    // 4. Restore
     if (highlight) highlight.visible = wasVisible;
     canvas.backgroundColor = originalBg;
-    
+    canvas.requestRenderAll();
+
+    const link = document.createElement('a');
+    link.download = `${title}.png`;
+    link.href = dataURL;
+    link.click();
+  }, []);
+
+  const generateThumbnail = useCallback(async () => {
+    if (!fabricRef.current) return null;
+    const canvas = fabricRef.current;
+
+    const originalBg = canvas.backgroundColor;
+    canvas.backgroundColor = '#ffffff';
+
+    const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+    const wasVisible = highlight ? highlight.visible : false;
+    if (highlight) highlight.visible = false;
+
+    const dataUrl = canvas.toDataURL({
+      format: 'jpeg',
+      quality: 0.8,
+      multiplier: 0.5,
+    });
+
+    if (highlight) highlight.visible = wasVisible;
+    canvas.backgroundColor = originalBg;
+
     return dataUrl;
   }, []);
 
   const getJsonState = useCallback(() => {
-     if (!fabricRef.current) return null;
-     // Standard toJSON
-     const json = (fabricRef.current as any).toObject([ 'id', 'excludeFromExport' ]); 
-     
-     // Filter out highlight manually to be safe
-     if (json && json.objects) {
-         json.objects = json.objects.filter((obj: any) => obj.id !== 'active-cell-highlight');
-     }
-     return json;
-  }, []);
+    if (!fabricRef.current) return null;
+    const json = (fabricRef.current as any).toObject(['id', 'excludeFromExport']);
 
-  // Highlight Active Cell Logic
+    if (json && json.objects) {
+      json.objects = json.objects.filter((obj: any) => obj.id !== 'active-cell-highlight');
+    }
+
+    json.gridConfig = gridConfig;
+
+    return json;
+  }, [gridConfig]);
+
   const highlightActiveCell = useCallback(() => {
-     if (!fabricRef.current) return;
-     const canvas = fabricRef.current;
-     
-     // Remove existing highlight
-     const existing = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
-     if (existing) {
-        canvas.remove(existing);
-     }
-     
-     // Calculate bounds
-     const bounds = getCellBounds(activeCell);
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
 
-     // Create highlight rect
-     const rect = new Rect({
-        left: bounds.centerX,
-        top: bounds.centerY,
-        width: bounds.width,
-        height: bounds.height,
-        originX: 'center',
-        originY: 'center',
-        fill: 'transparent',
-        stroke: '#f97316', 
-        strokeWidth: 4,
-        selectable: false,
-        evented: false, 
-        // @ts-ignore
-        id: 'active-cell-highlight',
-        excludeFromExport: true 
-     });
+    const existing = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+    if (existing) {
+      canvas.remove(existing);
+    }
 
-     canvas.add(rect);
-     canvas.requestRenderAll();
+    const bounds = getCellBounds(activeCell);
+
+    const rect = new Rect({
+      left: bounds.centerX,
+      top: bounds.centerY,
+      width: bounds.width,
+      height: bounds.height,
+      originX: 'center',
+      originY: 'center',
+      fill: 'transparent',
+      stroke: '#f97316',
+      strokeWidth: 4,
+      selectable: false,
+      evented: false,
+      // @ts-ignore
+      id: 'active-cell-highlight',
+      excludeFromExport: true
+    });
+
+    canvas.add(rect);
+    canvas.requestRenderAll();
   }, [activeCell, getCellBounds]);
 
-  // Trigger Highlight on Active Cell Change
   useEffect(() => {
-     if (fabricRef.current) {
-        highlightActiveCell();
-     }
+    if (fabricRef.current) {
+      highlightActiveCell();
+    }
   }, [activeCell, highlightActiveCell]);
-
 
 
   return {
@@ -573,6 +665,10 @@ export function useLayerCanvas({
     activeObjectRect,
     isDragging,
     activeObjectProperties,
-    updateActiveObject
+    updateActiveObject,
+    activeObjectFilters,
+    updateActiveImageFilter,
+    gridConfig,
+    updateGridConfig
   };
 }

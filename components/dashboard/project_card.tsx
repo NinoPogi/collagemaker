@@ -121,7 +121,7 @@ export default function ProjectCard({ project, isHovered, onHover, onLeave }: Pr
         </div>
       </div>
     </Link>
-    <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="absolute top-2 right-2 z-10 opacity-100 transition-opacity">
             <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <button 
