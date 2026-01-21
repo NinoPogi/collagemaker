@@ -6,6 +6,7 @@ import { updateProject, uploadImage } from '@/app/actions';
 import { Project } from '@/types/project';
 import EditorHeader from '@/components/editor/editor-header';
 import EditorSidebar from '@/components/editor/editor-sidebar';
+import FloatingMenu from '@/components/editor/floating-menu';
 import { useLayerCanvas } from '../../../components/editor/use-layer-canvas';
 import { ProjectImage } from '@/lib/generated/prisma/client';
 
@@ -18,7 +19,10 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
   const router = useRouter();
   const [title, setTitle] = useState(project.title);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('add');
+  const [activeTab, setActiveTab] = useState('upload');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Use layer canvas hook (Smart Single Canvas)
   const {
@@ -27,7 +31,13 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
     addTextToActiveCell,
     downloadCanvas,
     generateThumbnail,
-    getJsonState
+    getJsonState,
+    deleteActiveObject,
+    isObjectSelected,
+    activeObjectRect,
+    isDragging,
+    activeObjectProperties,
+    updateActiveObject
   } = useLayerCanvas({
     project,
     onCanvasChange: () => {
@@ -91,11 +101,6 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
     };
   };
 
-  // Hidden File Input Ref
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Responsive Container sizing
-  const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
@@ -139,30 +144,66 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
           <EditorSidebar 
              activeTab={activeTab}
              setActiveTab={setActiveTab}
+             isExpanded={isSidebarOpen}
+             setIsExpanded={setIsSidebarOpen}
              onAddText={addTextToActiveCell}
              projectId={project.id}
              projectImages={initialImages}
+             activeObjectProperties={activeObjectProperties}
+             onUpdateActiveObject={updateActiveObject}
+             onSelectImage={(image) => {
+                 addImageToActiveCell(image.url);
+                 // Auto-close on mobile
+                 if (window.innerWidth < 768) {
+                    setIsSidebarOpen(false);
+                 }
+             }}
           />
           
           {/* Canvas Area */}
-          <main ref={containerRef} className="flex-1 flex items-center justify-center p-4 pb-24 md:pb-4 bg-dots-pattern">
+          <main 
+             ref={containerRef} 
+             className="flex-1 flex items-center justify-center p-4 pb-24 md:pb-4 bg-dots-pattern relative"
+             onClick={() => {
+                // If sidebar is open, close it (on mobile especially, or desktop if user wants full view)
+                // Actually the requirement: "if they want to close the tab they just click outside the canvas"
+                // This `main` area IS the outside of the canvas wrapper (the dots area).
+                // if(isSidebarOpen) setIsSidebarOpen(false);
+             }}
+          >
               <div 
-                className="shadow-2xl border border-slate-200 dark:border-slate-700 bg-white transition-all duration-300 ease-out"
+                className="shadow-2xl border border-slate-200 dark:border-slate-700 bg-white transition-all duration-300 ease-out relative"
                 style={{
                   width: project.canvasWidth * scale,
                   height: project.canvasHeight * scale,
                 }}
               >
-                <div
-                  style={{
-                    transform: `scale(${scale})`,
-                    transformOrigin: 'top left',
-                    width: project.canvasWidth,
-                    height: project.canvasHeight,
-                  }}
-                >
-                  <canvas ref={canvasRef} />
-                </div>
+                 <div
+                    style={{
+                       width: project.canvasWidth,
+                       height: project.canvasHeight,
+                       transform: `scale(${scale})`,
+                       transformOrigin: 'top left'
+                    }}
+                 >
+                    {isObjectSelected && activeObjectRect && !isDragging && (
+                        <FloatingMenu 
+                           onDelete={deleteActiveObject} 
+                           position={{
+                              top: activeObjectRect.top,
+                              left: activeObjectRect.left + (activeObjectRect.width / 2)
+                           }}
+                           label={activeObjectRect.type === 'i-text' ? 'Text Layer' : 'Image Layer'}
+                        />
+                    )}
+                    {isObjectSelected && !activeObjectRect && !isDragging && (
+                        <FloatingMenu onDelete={deleteActiveObject} />
+                    )}
+                    {/* Stable wrapper for Fabric.js to manipulate without breaking React */}
+                    <div>
+                       <canvas ref={canvasRef} />
+                    </div>
+                 </div>
               </div>
           </main>
        </div>

@@ -1,17 +1,18 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Upload, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import { ProjectImage } from '@/lib/generated/prisma/client';
-import { uploadImage } from '@/app/actions';
+import { uploadImage, deleteProjectImage } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 
 interface ImagesPanelProps {
   projectId: string;
   images: ProjectImage[];
   onUploadSuccess: (newImage: ProjectImage) => void;
+  onSelectImage: (image: ProjectImage) => void;
 }
 
-export default function ImagesPanel({ projectId, images: initialImages, onUploadSuccess }: ImagesPanelProps) {
+export default function ImagesPanel({ projectId, images: initialImages, onUploadSuccess, onSelectImage }: ImagesPanelProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [localImages, setLocalImages] = useState<ProjectImage[]>(initialImages);
 
@@ -31,6 +32,7 @@ export default function ImagesPanel({ projectId, images: initialImages, onUpload
         const newImage: ProjectImage = {
             id: 'temp-' + Date.now(),
             url: res.url,
+            fileId: null,
             thumbnail: null,
             projectId: projectId,
             createdAt: new Date()
@@ -71,18 +73,33 @@ export default function ImagesPanel({ projectId, images: initialImages, onUpload
         {localImages.map((img) => (
           <div 
             key={img.id}
+            onClick={() => onSelectImage(img)}
             draggable
             onDragStart={(e) => {
-               e.dataTransfer.setData('payload', JSON.stringify({ type: 'image', url: img.url, aspectRatio: 1 })); // Aspect ratio simplified
+               e.dataTransfer.setData('payload', JSON.stringify({ type: 'image', url: img.url, aspectRatio: 1 })); 
                e.dataTransfer.effectAllowed = 'copy';
             }}
-            className="aspect-square bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden cursor-grab active:cursor-grabbing hover:ring-2 ring-orange-400 transition-all relative group"
+            className="aspect-square bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden cursor-pointer hover:ring-2 ring-orange-400 transition-all relative group"
           >
             <img 
                src={img.thumbnail || img.url} 
                alt="Project Asset" 
-               className="w-full h-full object-cover pointer-events-none" // prevent default img drag behavior conflict? No, we want drag.
+               className="w-full h-full object-cover pointer-events-none" 
             />
+            {/* Delete Button Overlay */}
+            <button
+               onClick={async (e) => {
+                  e.stopPropagation();
+                  // Optimistic remove
+                  setLocalImages(prev => prev.filter(p => p.id !== img.id));
+                  await deleteProjectImage(img.id);
+                  router.refresh();
+               }}
+               className="absolute top-1 right-1 p-1 bg-black/50 hover:bg-red-500 rounded-full text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all z-10"
+               title="Delete Image"
+            >
+               <X size={12} />
+            </button>
           </div>
         ))}
         {localImages.length === 0 && !isUploading && (

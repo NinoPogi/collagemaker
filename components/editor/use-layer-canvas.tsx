@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Canvas, FabricImage, IText, Rect, FabricObject, Path } from 'fabric';
+import { Canvas, FabricImage, IText, Rect, FabricObject, Path, InteractiveFabricObject, } from 'fabric';
 import { Project } from '@/types/project';
 
 export interface LayerCanvasState {
@@ -18,6 +18,10 @@ export function useLayerCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const [activeCell, setActiveCell] = useState<number>(0);
+  const [isObjectSelected, setIsObjectSelected] = useState(false);
+  const [activeObjectRect, setActiveObjectRect] = useState<{ top: number; left: number; width: number; height: number; type: string; } | null>(null);
+  const [activeObjectProperties, setActiveObjectProperties] = useState<any>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const initialized = useRef(false);
   const canvasWidth = project.canvasWidth;
   const canvasHeight = project.canvasHeight;
@@ -70,7 +74,7 @@ export function useLayerCanvas({
   useEffect(() => {
     if (!canvasRef.current || initialized.current) return;
     initialized.current = true;
-    
+
     const canvas = new Canvas(canvasRef.current, {
       width: canvasWidth,
       height: canvasHeight,
@@ -78,6 +82,19 @@ export function useLayerCanvas({
       preserveObjectStacking: true, // Keep text on top
       selection: true,
     });
+
+    InteractiveFabricObject.ownDefaults = {
+    ...InteractiveFabricObject.ownDefaults,
+    cornerStrokeColor: 'blue',
+    cornerColor: 'lightblue',
+    cornerStyle: 'circle',
+    padding: 10,
+    transparentCorners: false,
+    cornerDashArray: [2, 2],
+    borderColor: 'orange',
+    borderDashArray: [3, 1, 3],
+    borderScaleFactor: 4,
+}
 
     fabricRef.current = canvas;
 
@@ -172,6 +189,7 @@ export function useLayerCanvas({
       }
     });
 
+
     canvas.on('object:moving', (e) => {
        const obj = e.target;
        if (!obj || !obj.clipPath) return; 
@@ -190,9 +208,77 @@ export function useLayerCanvas({
         if (onCanvasChange) onCanvasChange();
     }, 1000); // 1s debounce is better UX
 
-    canvas.on('object:modified', triggerSave);
-    canvas.on('object:removed', triggerSave);
+    // Selection Events
+    const handleSelection = () => {
+       const active = canvas.getActiveObject();
+       setIsObjectSelected(!!active);
 
+       if (active) {
+          const bound = active.getBoundingRect();
+          setActiveObjectRect({
+             top: bound.top,
+             left: bound.left,
+             width: bound.width,
+             height: bound.height,
+             type: active.type
+          });
+
+          // Extract properties if text
+          if (active.type === 'i-text' || active.type === 'text') {
+             setActiveObjectProperties({
+                fontFamily: (active as IText).fontFamily,
+                fontSize: (active as IText).fontSize,
+                fill: (active as IText).fill,
+                textAlign: (active as IText).textAlign,
+                fontWeight: (active as IText).fontWeight,
+                fontStyle: (active as IText).fontStyle,
+             });
+          } else {
+             // We can extend this for other objects later
+             setActiveObjectProperties(null);
+          }
+
+       } else {
+          setActiveObjectRect(null);
+          setActiveObjectProperties(null);
+       }
+    };
+
+    const handleObjectModified = () => {
+        handleSelection(); // Re-calculate bounds
+        triggerSave();
+    };
+
+    canvas.on('selection:created', handleSelection);
+    canvas.on('selection:updated', handleSelection);
+    canvas.on('selection:cleared', () => {
+       setIsObjectSelected(false);
+       setActiveObjectRect(null);
+       setActiveObjectProperties(null);
+    });
+    
+    // Track movement for dynamic menu
+    const handleTransformStart = () => {
+        handleSelection();
+        setIsDragging(true);
+    };
+
+    const handleInteractionEnd = () => {
+        setIsDragging(false);
+        handleSelection(); // Update final position
+        triggerSave(); // Ensure save happens on end
+    };
+
+    canvas.on('object:moving', handleTransformStart);
+    canvas.on('object:scaling', handleTransformStart);
+    canvas.on('object:rotating', handleTransformStart);
+    canvas.on('object:resizing', handleTransformStart);
+
+    canvas.on('mouse:up', handleInteractionEnd); 
+    // canvas.on('object:modified') is also good but mouse:up covers non-modifying interactions too if needed, 
+    // but strictly for "not being dragged", mouse:up is the interaction end.
+
+    canvas.on('object:modified', handleObjectModified);
     canvas.on('object:removed', triggerSave);
 
     // Initial Render
@@ -292,6 +378,7 @@ export function useLayerCanvas({
 
       canvas.add(img);
       canvas.setActiveObject(img);
+
       canvas.renderAll();
       
       // Trigger autosave
@@ -327,23 +414,61 @@ export function useLayerCanvas({
     fabricRef.current.renderAll();
   }, [activeCell, getCellBounds]);
 
-  const deleteActive = useCallback(() => {
-    if (!fabricRef.current) return;
-    const activeObjects = fabricRef.current.getActiveObjects();
-    if (activeObjects.length) {
-      activeObjects.forEach((obj) => fabricRef.current?.remove(obj));
-      fabricRef.current.discardActiveObject();
-      fabricRef.current.requestRenderAll();
-    }
+  const deleteActiveObject = useCallback(() => {
+      if (!fabricRef.current) return;
+      const active = fabricRef.current.getActiveObject();
+      if (active) {
+          fabricRef.current.remove(active);
+          fabricRef.current.discardActiveObject();
+          fabricRef.current.renderAll(); // Auto-save triggers on 'object:removed'
+          setIsObjectSelected(false);
+      }
+  }, []);
+
+  const updateActiveObject = useCallback((updates: Partial<FabricObject>) => {
+      if (!fabricRef.current) return;
+      const active = fabricRef.current.getActiveObject();
+      if (active) {
+          active.set(updates);
+          active.setCoords(); // Update hit box
+          fabricRef.current.requestRenderAll();
+          
+          // Manually trigger updates
+          if (active.type === 'i-text' || active.type === 'text') {
+              // Update state locally so UI reflects change immediately
+               setActiveObjectProperties((prev: any) => ({ ...prev, ...updates }));
+          }
+
+          // Trigger save
+          fabricRef.current.fire('object:modified', { target: active });
+      }
   }, []);
 
   const downloadCanvas = useCallback(async (title: string) => {
      if (!fabricRef.current) return;
-     const dataURL = fabricRef.current.toDataURL({
+     const canvas = fabricRef.current; // Stable ref
+
+     // 1. Handle Background (Make opaque white)
+     const originalBg = canvas.backgroundColor;
+     canvas.backgroundColor = '#ffffff';
+
+     // 2. Hide Highlight
+     const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+     const wasVisible = highlight ? highlight.visible : false;
+     if (highlight) highlight.visible = false;
+
+     // 3. Export
+     const dataURL = canvas.toDataURL({
         format: 'png',
         quality: 1,
         multiplier: 2
      });
+
+     // 4. Restore State
+     if (highlight) highlight.visible = wasVisible;
+     canvas.backgroundColor = originalBg;
+     canvas.requestRenderAll();
+
      const link = document.createElement('a');
      link.download = `${title}.png`;
      link.href = dataURL;
@@ -352,26 +477,87 @@ export function useLayerCanvas({
   
   const generateThumbnail = useCallback(async () => {
     if (!fabricRef.current) return null;
+    const canvas = fabricRef.current;
+
+    // 1. Handle Background
+    const originalBg = canvas.backgroundColor;
+    canvas.backgroundColor = '#ffffff';
     
-    // Create a temporary white background for the thumbnail (JPEG doesn't verify transparency)
-    const originalBg = fabricRef.current.backgroundColor;
-    fabricRef.current.backgroundColor = '#ffffff';
-    
-    const dataUrl = fabricRef.current.toDataURL({
+    // 2. Hide Highlight
+    const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+    const wasVisible = highlight ? highlight.visible : false;
+    if (highlight) highlight.visible = false;
+
+    // 3. Export
+    const dataUrl = canvas.toDataURL({
         format: 'jpeg',
         quality: 0.8,
         multiplier: 0.5,
     });
 
-    // Restore original background (though it should be white anyway)
-    fabricRef.current.backgroundColor = originalBg;
+    // 4. Restore
+    if (highlight) highlight.visible = wasVisible;
+    canvas.backgroundColor = originalBg;
     
     return dataUrl;
   }, []);
 
   const getJsonState = useCallback(() => {
-     return fabricRef.current?.toJSON();
+     if (!fabricRef.current) return null;
+     // Standard toJSON
+     const json = (fabricRef.current as any).toObject([ 'id', 'excludeFromExport' ]); 
+     
+     // Filter out highlight manually to be safe
+     if (json && json.objects) {
+         json.objects = json.objects.filter((obj: any) => obj.id !== 'active-cell-highlight');
+     }
+     return json;
   }, []);
+
+  // Highlight Active Cell Logic
+  const highlightActiveCell = useCallback(() => {
+     if (!fabricRef.current) return;
+     const canvas = fabricRef.current;
+     
+     // Remove existing highlight
+     const existing = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+     if (existing) {
+        canvas.remove(existing);
+     }
+     
+     // Calculate bounds
+     const bounds = getCellBounds(activeCell);
+
+     // Create highlight rect
+     const rect = new Rect({
+        left: bounds.centerX,
+        top: bounds.centerY,
+        width: bounds.width,
+        height: bounds.height,
+        originX: 'center',
+        originY: 'center',
+        fill: 'transparent',
+        stroke: '#f97316', 
+        strokeWidth: 4,
+        selectable: false,
+        evented: false, 
+        // @ts-ignore
+        id: 'active-cell-highlight',
+        excludeFromExport: true 
+     });
+
+     canvas.add(rect);
+     canvas.requestRenderAll();
+  }, [activeCell, getCellBounds]);
+
+  // Trigger Highlight on Active Cell Change
+  useEffect(() => {
+     if (fabricRef.current) {
+        highlightActiveCell();
+     }
+  }, [activeCell, highlightActiveCell]);
+
+
 
   return {
     canvasRef,
@@ -379,9 +565,14 @@ export function useLayerCanvas({
     setActiveCell,
     addImageToActiveCell,
     addTextToActiveCell,
-    deleteActive,
     downloadCanvas,
     generateThumbnail,
-    getJsonState
+    getJsonState,
+    deleteActiveObject,
+    isObjectSelected,
+    activeObjectRect,
+    isDragging,
+    activeObjectProperties,
+    updateActiveObject
   };
 }

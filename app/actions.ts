@@ -16,7 +16,7 @@ export async function uploadImage(formData: FormData, projectId?: string) {
       throw new Error('No file provided');
     }
 
-    const folder = projectId ? `projects/${projectId}` : 'uploads';
+    const folder = projectId ? `projects/${projectId}` : 'thumbnails';
 
     const result = await imagekit.upload({
       file, 
@@ -29,6 +29,7 @@ export async function uploadImage(formData: FormData, projectId?: string) {
        await prisma.projectImage.create({
           data: {
              url: result.url,
+             fileId: result.fileId,
              thumbnail: result.thumbnailUrl,
              projectId: projectId
           }
@@ -57,6 +58,32 @@ export async function getProjectImages(projectId: string) {
       console.error('Fetch images error:', error);
       return [];
    }
+}
+
+export async function deleteProjectImage(imageId: string) {
+    try {
+        const image = await prisma.projectImage.findUnique({
+            where: { id: imageId },
+        });
+
+        if (!image) {
+           return { success: false, error: 'Image not found' };
+        }
+
+        if (image.fileId) {
+            await imagekit.deleteFile(image.fileId);
+        }
+
+        await prisma.projectImage.delete({
+            where: { id: imageId },
+        });
+
+        revalidatePath(`/editor/${image.projectId}`);
+        return { success: true };
+    } catch (error) {
+        console.error('Delete image error:', error);
+        return { success: false, error: 'Failed to delete image' };
+    }
 }
 
 export async function createProject(data: {
@@ -194,6 +221,14 @@ export async function deleteProject(projectId: string) {
 
     if (!project || project.owner.id !== userId) {
       return { success: false, error: 'Unauthorized' }
+    }
+
+    // Delete from ImageKit (Folder)
+    try {
+        await imagekit.deleteFolder(`projects/${projectId}`);
+    } catch (err) {
+        console.log('ImageKit folder might not exist or error:', err);
+        // Continue to delete project from DB even if ImageKit cleanup fails partially
     }
 
     await prisma.project.delete({
