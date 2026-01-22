@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/actions';
-import { COLLAGE_SIZES, GRID_LAYOUTS } from '@/lib/collage-constants';
+import { COLLAGE_SIZES } from '@/lib/collage-constants';
+import GridSplitter, { GridCell } from '../grid-builder/grid-splitter';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -17,7 +18,9 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
   const [selectedSize, setSelectedSize] = useState(COLLAGE_SIZES[0]);
   const [customWidth, setCustomWidth] = useState('1200');
   const [customHeight, setCustomHeight] = useState('800');
-  const [selectedGrid, setSelectedGrid] = useState(GRID_LAYOUTS[0]);
+  const [customCells, setCustomCells] = useState<GridCell[]>([]);
+  // We no longer strictly select a predefined grid, so we remove selectedGrid state or keep it as a fallback/mode switch if we want to support both.
+  // Requirement says "replace", so we drop the old selection.
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,15 +35,19 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
 
       // Generate initial canvas state for multi-canvas grid
       // Each cell will be initialized with an empty canvas state
-      const canvasState = { cells: {} };
+      // Generate initial canvas state for CUSTOM grid
+      const canvasState = { 
+         customGrid: customCells, // Save the array of cells
+         objects: [] // Standard objects array
+      };
 
       const result = await createProject({
         title: title || 'Untitled Collage',
         canvasState: canvasState,
         canvasWidth: width,
         canvasHeight: height,
-        gridRows: selectedGrid.rows || 1,
-        gridCols: selectedGrid.cols || 1,
+        gridRows: 1, // Custom grid uses json state
+        gridCols: 1,
       });
 
       if (!result.success) {
@@ -65,7 +72,7 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
       setSelectedSize(COLLAGE_SIZES[0]);
       setCustomWidth('1200');
       setCustomHeight('800');
-      setSelectedGrid(GRID_LAYOUTS[0]);
+      setCustomCells([]);
       setError('');
       onClose();
     }
@@ -195,27 +202,17 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
           {step === 'grid' && (
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">
-                Select Grid Layout
+                Create Grid Layout
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {GRID_LAYOUTS.map((grid) => (
-                  <button
-                    key={grid.id}
-                    onClick={() => setSelectedGrid(grid)}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      selectedGrid.id === grid.id
-                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                        : 'border-slate-200 dark:border-slate-700 hover:border-orange-300'
-                    }`}
-                  >
-                    <div className="mb-3">
-                      <GridPreview rows={grid.rows} cols={grid.cols} />
-                    </div>
-                    <div className="font-bold text-sm text-slate-800 dark:text-white">
-                      {grid.name}
-                    </div>
-                  </button>
-                ))}
+              <div className="h-[400px] flex justify-center items-center bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4">
+                  <GridSplitter 
+                    onChange={setCustomCells} 
+                    aspectRatio={
+                      selectedSize.name === 'Custom' 
+                        ? (parseInt(customWidth) || 1200) / (parseInt(customHeight) || 800)
+                        : selectedSize.width / selectedSize.height
+                    }
+                  />
               </div>
             </div>
           )}
@@ -257,7 +254,7 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
                   <div className="flex justify-between">
                     <span className="text-slate-600 dark:text-slate-400">Grid Layout:</span>
                     <span className="font-semibold text-slate-800 dark:text-white">
-                      {selectedGrid.name}
+                       Custom Grid ({customCells.length} cells)
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -334,36 +331,6 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
           animation: scale-in 0.2s ease-out;
         }
       `}</style>
-    </div>
-  );
-}
-
-// Grid Preview Component
-function GridPreview({ rows, cols }: { rows: number; cols: number }) {
-  if (rows === 0 || cols === 0) {
-    return (
-      <div className="w-full aspect-square bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center">
-        <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      </div>
-    );
-  }
-
-  return (
-    <div 
-      className="w-full aspect-square grid gap-1 bg-slate-200 dark:bg-slate-600 p-1 rounded-lg"
-      style={{
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gridTemplateRows: `repeat(${rows}, 1fr)`
-      }}
-    >
-      {Array.from({ length: rows * cols }).map((_, i) => (
-        <div
-          key={i}
-          className="bg-slate-100 dark:bg-slate-700 rounded-sm"
-        />
-      ))}
     </div>
   );
 }

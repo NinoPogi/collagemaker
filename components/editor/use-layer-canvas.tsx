@@ -38,23 +38,34 @@ export function useLayerCanvas({
 
   // Helper to get cell dimensions and bounds
   const getCellBounds = useCallback((index: number) => {
+    // Custom Grid Logic
+    if (initialState?.customGrid && initialState.customGrid[index]) {
+       const cell = initialState.customGrid[index];
+       return {
+          left: cell.x * canvasWidth,
+          top: cell.y * canvasHeight,
+          centerX: (cell.x * canvasWidth) + (cell.width * canvasWidth) / 2,
+          centerY: (cell.y * canvasHeight) + (cell.height * canvasHeight) / 2,
+          width: cell.width * canvasWidth,
+          height: cell.height * canvasHeight,
+       };
+    }
+
+    // Legacy Uniform Grid Logic
     const cellWidth = canvasWidth / cols;
     const cellHeight = canvasHeight / rows;
     const row = Math.floor(index / cols);
     const col = index % cols;
 
-    const centerX = (col * cellWidth) + (cellWidth / 2);
-    const centerY = (row * cellHeight) + (cellHeight / 2);
-
     return {
       left: col * cellWidth,
       top: row * cellHeight,
-      centerX,
-      centerY,
+      centerX: (col * cellWidth) + (cellWidth / 2),
+      centerY: (row * cellHeight) + (cellHeight / 2),
       width: cellWidth,
       height: cellHeight,
     };
-  }, [rows, cols, canvasWidth, canvasHeight]);
+  }, [rows, cols, canvasWidth, canvasHeight, initialState]);
 
   // Create clip rect for a specific cell
   const createClipRect = useCallback((index: number) => {
@@ -66,8 +77,8 @@ export function useLayerCanvas({
       height: bounds.height,
       originX: 'center',
       originY: 'center',
-      absolutePositioned: true, // Critical for robust clipping
-      strokeWidth: 0, // Ensure no stroke affects bounds
+      absolutePositioned: true, 
+      strokeWidth: 0,
       fill: 'transparent',
     });
   }, [getCellBounds]);
@@ -81,7 +92,7 @@ export function useLayerCanvas({
       width: canvasWidth,
       height: canvasHeight,
       backgroundColor: '#ffffff',
-      preserveObjectStacking: true, // Keep text on top
+      preserveObjectStacking: true, 
       selection: true,
     });
 
@@ -100,19 +111,6 @@ export function useLayerCanvas({
 
     fabricRef.current = canvas;
 
-
-    // Helper defined inside to access local scope vars easily, 
-    // but better if outside so we can call it when config changes.
-    // However, to fix the structure quickly, I'll define it here for init, 
-    // and rely on updateGridConfig to trigger refreshes via modified/re-add logic.
-    // Actually, let's keep it here for INIT.
-    const addGrid = () => {
-       // Defined below but reused here for initial load?
-       // Just call the reusable function if possible.
-       // But reusable function needs closure vars.
-       // Let's rely on the separate `useEffect` for grid rendering.
-    };
-    
     // Load State Logic
     if (initialState) {
          if (initialState.gridConfig) {
@@ -130,11 +128,25 @@ export function useLayerCanvas({
 
       // Clicked on empty space -> Determine Active Cell
       const pointer = canvas.getScenePoint(e.e);
-      const col = Math.floor(pointer.x / (canvasWidth / cols));
-      const row = Math.floor(pointer.y / (canvasHeight / rows));
-      const index = row * cols + col;
+      let index = -1;
 
-      if (index >= 0 && index < rows * cols) {
+      // Check Custom Grid
+      if (initialState?.customGrid) {
+          index = initialState.customGrid.findIndex((cell: any) => {
+              const x = cell.x * canvasWidth;
+              const y = cell.y * canvasHeight;
+              const w = cell.width * canvasWidth;
+              const h = cell.height * canvasHeight;
+              return pointer.x >= x && pointer.x <= x + w && pointer.y >= y && pointer.y <= y + h;
+          });
+      } else {
+         // Legacy Check
+         const col = Math.floor(pointer.x / (canvasWidth / cols));
+         const row = Math.floor(pointer.y / (canvasHeight / rows));
+         index = row * cols + col;
+      }
+
+      if (index >= 0) {
         setActiveCell(index);
       }
     });
@@ -173,7 +185,6 @@ export function useLayerCanvas({
           type: active.type
         });
 
-        // Extract properties if text
         if (active.type === 'i-text' || active.type === 'text') {
           setActiveObjectProperties({
             fontFamily: (active as IText).fontFamily,
@@ -187,7 +198,6 @@ export function useLayerCanvas({
           setActiveObjectProperties(null);
         }
 
-        // Extract Filters if Image
         if (active.type === 'image') {
           const img = active as FabricImage;
           const filtersState: any = {
@@ -218,7 +228,7 @@ export function useLayerCanvas({
     };
 
     const handleObjectModified = () => {
-      handleSelection(); // Re-calculate bounds
+      handleSelection(); 
       triggerSave();
     };
 
@@ -231,7 +241,6 @@ export function useLayerCanvas({
       setActiveObjectFilters(null);
     });
 
-    // Track movement for dynamic menu
     const handleTransformStart = () => {
       handleSelection();
       setIsDragging(true);
@@ -239,8 +248,8 @@ export function useLayerCanvas({
 
     const handleInteractionEnd = () => {
       setIsDragging(false);
-      handleSelection(); // Update final position
-      triggerSave(); // Ensure save happens on end
+      handleSelection(); 
+      triggerSave(); 
     };
 
     canvas.on('object:moving', handleTransformStart);
@@ -250,14 +259,16 @@ export function useLayerCanvas({
 
     canvas.on('mouse:up', handleInteractionEnd);
     canvas.on('object:modified', handleObjectModified);
-    canvas.on('object:removed', triggerSave);
+    canvas.on('object:removed', (e) => {
+      // @ts-ignore
+      if (e.target && (e.target.id === 'grid-line' || e.target.id === 'active-cell-highlight')) return;
+      triggerSave();
+    });
 
-    // Initial Render
     canvas.renderAll();
 
-    // Native Drag & Drop Support
     const upperCanvasEl = canvas.upperCanvasEl;
-    const wrapper = upperCanvasEl.parentElement; // Fabric wrapper
+    const wrapper = upperCanvasEl.parentElement; 
 
     if (wrapper) {
       wrapper.addEventListener('dragover', handleDragOver);
@@ -273,87 +284,111 @@ export function useLayerCanvas({
         wrapper.removeEventListener('drop', handleDrop);
       }
     };
-  }, [canvasWidth, canvasHeight, rows, cols]);
+  }, [canvasWidth, canvasHeight]); // Removed unstable dependencies to prevent re-init loop
 
   // Separate Effect for Grid Rendering (Responsive to Config Changes)
   useEffect(() => {
       if (!fabricRef.current) return;
       const canvas = fabricRef.current;
       
-      // Grid Creation Logic
       const addGrid = () => {
-        // Clear existing grid lines first to prevent stacking
+        // Clear existing grid lines
         canvas.getObjects().forEach(obj => {
            // @ts-ignore
-           if (obj.id === 'grid-line' || (obj.type === 'path' && obj.stroke === '#e0e0e0' && !obj.selectable)) {
+           if (obj.id === 'grid-line' || (obj.type === 'path' && obj.stroke === '#e0e0e0' && !obj.selectable) || (obj.id === 'custom-grid-border')) {
               canvas.remove(obj);
            }
         });
   
         const gridGroup: FabricObject[] = [];
-        const cellWidth = canvasWidth / cols;
-        const cellHeight = canvasHeight / rows;
-  
-        // Vertical lines
-        for (let c = 1; c < cols; c++) {
-          const x = c * cellWidth;
-          const pathData = `M 0 0 L 0 ${canvasHeight}`;
-          const line = new Path(pathData, {
-            left: x,
-            top: 0,
-            stroke: gridConfig.color,
-            strokeWidth: gridConfig.thickness,
-            selectable: false,
-            evented: false,
-            originX: 'center',
-            originY: 'top',
-            // @ts-ignore
-            id: 'grid-line',
-            excludeFromExport: true 
-          });
-          gridGroup.push(line);
-        }
-  
-        // Horizontal lines
-        for (let r = 1; r < rows; r++) {
-          const y = r * cellHeight;
-          const pathData = `M 0 0 L ${canvasWidth} 0`;
-          const line = new Path(pathData, {
-            left: 0,
-            top: y,
-            stroke: gridConfig.color,
-            strokeWidth: gridConfig.thickness,
-            selectable: false,
-            evented: false,
-            originX: 'left',
-            originY: 'center',
-            // @ts-ignore
-            id: 'grid-line',
-            excludeFromExport: true
-          });
-          gridGroup.push(line);
+
+        // Custom Grid Rendering
+        if (initialState?.customGrid) {
+            initialState.customGrid.forEach((_cell: any, index: number) => {
+                const bounds = getCellBounds(index);
+                
+                // Draw rect for each cell border
+                const rect = new Rect({
+                    left: bounds.centerX,
+                    top: bounds.centerY,
+                    width: bounds.width,
+                    height: bounds.height,
+                    originX: 'center',
+                    originY: 'center',
+                    fill: 'transparent',
+                    stroke: gridConfig.color,
+                    strokeWidth: gridConfig.thickness,
+                    selectable: false,
+                    evented: false,
+                    // @ts-ignore
+                    id: 'grid-line',
+                    excludeFromExport: false 
+                });
+                gridGroup.push(rect);
+            });
+
+        } else {
+             // Legacy Uniform Grid Rendering
+             const cellWidth = canvasWidth / cols;
+             const cellHeight = canvasHeight / rows;
+       
+             // Vertical lines
+             for (let c = 1; c < cols; c++) {
+               const x = c * cellWidth;
+               const pathData = `M 0 0 L 0 ${canvasHeight}`;
+               const line = new Path(pathData, {
+                 left: x,
+                 top: 0,
+                 stroke: gridConfig.color,
+                 strokeWidth: gridConfig.thickness,
+                 selectable: false,
+                 evented: false,
+                 originX: 'center',
+                 originY: 'top',
+                 // @ts-ignore
+                 id: 'grid-line',
+                 excludeFromExport: true 
+               });
+               gridGroup.push(line);
+             }
+       
+             // Horizontal lines
+             for (let r = 1; r < rows; r++) {
+               const y = r * cellHeight;
+               const pathData = `M 0 0 L ${canvasWidth} 0`;
+               const line = new Path(pathData, {
+                 left: 0,
+                 top: y,
+                 stroke: gridConfig.color,
+                 strokeWidth: gridConfig.thickness,
+                 selectable: false,
+                 evented: false,
+                 originX: 'left',
+                 originY: 'center',
+                 // @ts-ignore
+                 id: 'grid-line',
+                 excludeFromExport: true
+               });
+               gridGroup.push(line);
+             }
         }
         
         gridGroup.forEach(obj => canvas.add(obj));
 
-        // Layering Enforcement: Images < Grid < Text
-        // 1. Send all images to back first
+        // Layering Enforcement
         canvas.getObjects().forEach(obj => {
             if (obj.type === 'image') canvas.sendObjectToBack(obj);
         });
   
-        // 2. Bring grid lines forward (above images)
          canvas.getObjects().forEach(obj => {
             // @ts-ignore
             if (obj.id === 'grid-line') canvas.bringObjectToFront(obj);
         });
   
-        // 3. Bring text to very front (above grid)
         canvas.getObjects().forEach(obj => {
             if (obj.type === 'i-text' || obj.type === 'text') canvas.bringObjectToFront(obj);
         });
         
-        // 4. Highlight always on top
         const highlight = canvas.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
         if (highlight) canvas.bringObjectToFront(highlight);
         
@@ -362,7 +397,7 @@ export function useLayerCanvas({
       
       addGrid();
 
-  }, [gridConfig, canvasWidth, canvasHeight, rows, cols]);
+  }, [gridConfig, canvasWidth, canvasHeight, rows, cols, initialState]);
 
 
   // DND Handlers
@@ -388,16 +423,27 @@ export function useLayerCanvas({
     const x = (e.clientX - rect.left) / (rect.width / canvasWidth);
     const y = (e.clientY - rect.top) / (rect.height / canvasHeight);
 
-    const col = Math.floor(x / (canvasWidth / cols));
-    const row = Math.floor(y / (canvasHeight / rows));
-    const index = row * cols + col;
+    let index = -1;
+    if (initialState?.customGrid) {
+        index = initialState?.customGrid.findIndex((cell: any) => {
+            const cx = cell.x * canvasWidth;
+            const cy = cell.y * canvasHeight;
+            const cw = cell.width * canvasWidth;
+            const ch = cell.height * canvasHeight;
+            return x >= cx && x <= cx + cw && y >= cy && y <= cy + ch;
+        });
+    } else {
+        const col = Math.floor(x / (canvasWidth / cols));
+        const row = Math.floor(y / (canvasHeight / rows));
+        index = row * cols + col;
+    }
 
-    if (index >= 0 && index < rows * cols) {
+    if (index >= 0) {
       setActiveCell(index);
       addImageToCell(index, url);
     }
 
-  }, [canvasWidth, canvasHeight, cols, rows]);
+  }, [canvasWidth, canvasHeight, cols, rows, initialState]);
 
   // Refactor addImage to take index
   const addImageToCell = useCallback((cellIndex: number, url: string) => {
@@ -609,8 +655,12 @@ export function useLayerCanvas({
 
     json.gridConfig = gridConfig;
 
+    if (initialState?.customGrid) {
+      json.customGrid = initialState.customGrid;
+    }
+
     return json;
-  }, [gridConfig]);
+  }, [gridConfig, initialState]);
 
   const highlightActiveCell = useCallback(() => {
     if (!fabricRef.current) return;

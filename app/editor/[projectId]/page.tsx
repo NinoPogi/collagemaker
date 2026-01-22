@@ -27,7 +27,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
   // Check if project exists and user owns it
   if (!project || project.owner.id !== userId) {
-    redirect('/dashboard');
+    redirect('/');
   }
 
   // Fetch project images
