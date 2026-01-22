@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProject } from '@/app/actions';
 import { COLLAGE_SIZES } from '@/lib/collage-constants';
-import GridSplitter, { GridCell } from '../grid-builder/grid-splitter';
+import GridSplitter, { GridCell, ShapeCell } from '../grid-builder/grid-splitter';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -19,6 +19,7 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
   const [customWidth, setCustomWidth] = useState('1200');
   const [customHeight, setCustomHeight] = useState('800');
   const [customCells, setCustomCells] = useState<GridCell[]>([]);
+  const [customShapes, setCustomShapes] = useState<ShapeCell[]>([]);
   // We no longer strictly select a predefined grid, so we remove selectedGrid state or keep it as a fallback/mode switch if we want to support both.
   // Requirement says "replace", so we drop the old selection.
   const [isLoading, setIsLoading] = useState(false);
@@ -37,8 +38,9 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
       // Each cell will be initialized with an empty canvas state
       // Generate initial canvas state for CUSTOM grid
       const canvasState = { 
-         customGrid: customCells, // Save the array of cells
-         objects: [] // Standard objects array
+         customGrid: customCells,
+         customShapes: customShapes,
+         objects: []
       };
 
       const result = await createProject({
@@ -73,6 +75,7 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
       setCustomWidth('1200');
       setCustomHeight('800');
       setCustomCells([]);
+      setCustomShapes([]);
       setError('');
       onClose();
     }
@@ -206,7 +209,10 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
               </h3>
               <div className="h-[400px] flex justify-center items-center bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4">
                   <GridSplitter 
-                    onChange={setCustomCells} 
+                    onChange={(cells, shapes) => {
+                      setCustomCells(cells);
+                      setCustomShapes(shapes);
+                    }} 
                     aspectRatio={
                       selectedSize.name === 'Custom' 
                         ? (parseInt(customWidth) || 1200) / (parseInt(customHeight) || 800)
@@ -254,7 +260,7 @@ export default function CreateProjectModal({ isOpen, onClose }: CreateProjectMod
                   <div className="flex justify-between">
                     <span className="text-slate-600 dark:text-slate-400">Grid Layout:</span>
                     <span className="font-semibold text-slate-800 dark:text-white">
-                       Custom Grid ({customCells.length} cells)
+                       Custom Grid
                     </span>
                   </div>
                   <div className="flex justify-between">

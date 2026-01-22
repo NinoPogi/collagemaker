@@ -37,7 +37,25 @@ export function useLayerCanvas({
 
 
   // Helper to get cell dimensions and bounds
+  // Shapes are indexed AFTER grid cells (gridCells.length + shapeIndex)
   const getCellBounds = useCallback((index: number) => {
+    const gridCells = initialState?.customGrid || [];
+    const shapes = initialState?.customShapes || [];
+    
+    // Check if this is a shape cell (index >= grid cell count)
+    if (index >= gridCells.length && shapes[index - gridCells.length]) {
+      const shape = shapes[index - gridCells.length];
+      return {
+        left: shape.x * canvasWidth,
+        top: shape.y * canvasHeight,
+        centerX: (shape.x * canvasWidth) + (shape.width * canvasWidth) / 2,
+        centerY: (shape.y * canvasHeight) + (shape.height * canvasHeight) / 2,
+        width: shape.width * canvasWidth,
+        height: shape.height * canvasHeight,
+        shapeType: shape.shapeType,
+      };
+    }
+    
     // Custom Grid Logic
     if (initialState?.customGrid && initialState.customGrid[index]) {
        const cell = initialState.customGrid[index];
@@ -67,9 +85,39 @@ export function useLayerCanvas({
     };
   }, [rows, cols, canvasWidth, canvasHeight, initialState]);
 
-  // Create clip rect for a specific cell
-  const createClipRect = useCallback((index: number) => {
+  // Create clip path for a specific cell (rect or shape)
+  const createClipPath = useCallback((index: number) => {
     const bounds = getCellBounds(index);
+    const shapeType = (bounds as any).shapeType;
+    
+    if (shapeType === 'circle') {
+      // For circle, use the smaller dimension as diameter
+      const diameter = Math.min(bounds.width, bounds.height);
+      const pathData = `M ${bounds.centerX},${bounds.centerY - diameter/2} ` +
+        `A ${diameter/2},${diameter/2} 0 1,1 ${bounds.centerX},${bounds.centerY + diameter/2} ` +
+        `A ${diameter/2},${diameter/2} 0 1,1 ${bounds.centerX},${bounds.centerY - diameter/2} Z`;
+      return new Path(pathData, {
+        absolutePositioned: true,
+        fill: 'transparent',
+      });
+    }
+    
+    if (shapeType === 'heart') {
+      // Simplified heart path scaled to bounds
+      const w = bounds.width;
+      const h = bounds.height;
+      const cx = bounds.centerX;
+      const cy = bounds.centerY;
+      const path = `M ${cx},${cy + h*0.35} ` +
+        `C ${cx - w*0.5},${cy - h*0.1} ${cx - w*0.5},${cy - h*0.45} ${cx},${cy - h*0.15} ` +
+        `C ${cx + w*0.5},${cy - h*0.45} ${cx + w*0.5},${cy - h*0.1} ${cx},${cy + h*0.35} Z`;
+      return new Path(path, {
+        absolutePositioned: true,
+        fill: 'transparent',
+      });
+    }
+    
+    // Default: rectangle clip
     return new Rect({
       left: bounds.centerX,
       top: bounds.centerY,
@@ -129,18 +177,38 @@ export function useLayerCanvas({
       // Clicked on empty space -> Determine Active Cell
       const pointer = canvas.getScenePoint(e.e);
       let index = -1;
+      
+      const gridCells = initialState?.customGrid || [];
+      const shapes = initialState?.customShapes || [];
 
-      // Check Custom Grid
-      if (initialState?.customGrid) {
-          index = initialState.customGrid.findIndex((cell: any) => {
+      // Check Shapes FIRST (they're on top, so they should be hit first)
+      if (shapes.length > 0) {
+        const shapeIdx = shapes.findIndex((shape: any) => {
+          const x = shape.x * canvasWidth;
+          const y = shape.y * canvasHeight;
+          const w = shape.width * canvasWidth;
+          const h = shape.height * canvasHeight;
+          return pointer.x >= x && pointer.x <= x + w && pointer.y >= y && pointer.y <= y + h;
+        });
+        if (shapeIdx >= 0) {
+          // Shape cells are indexed AFTER grid cells
+          index = gridCells.length + shapeIdx;
+        }
+      }
+
+      // If not in a shape, check Custom Grid
+      if (index < 0 && gridCells.length > 0) {
+          index = gridCells.findIndex((cell: any) => {
               const x = cell.x * canvasWidth;
               const y = cell.y * canvasHeight;
               const w = cell.width * canvasWidth;
               const h = cell.height * canvasHeight;
               return pointer.x >= x && pointer.x <= x + w && pointer.y >= y && pointer.y <= y + h;
           });
-      } else {
-         // Legacy Check
+      }
+      
+      // Legacy Check
+      if (index < 0 && gridCells.length === 0 && shapes.length === 0) {
          const col = Math.floor(pointer.x / (canvasWidth / cols));
          const row = Math.floor(pointer.y / (canvasHeight / rows));
          index = row * cols + col;
@@ -292,10 +360,10 @@ export function useLayerCanvas({
       const canvas = fabricRef.current;
       
       const addGrid = () => {
-        // Clear existing grid lines
+        // Clear existing grid lines and shape borders
         canvas.getObjects().forEach(obj => {
            // @ts-ignore
-           if (obj.id === 'grid-line' || (obj.type === 'path' && obj.stroke === '#e0e0e0' && !obj.selectable) || (obj.id === 'custom-grid-border')) {
+           if (obj.id === 'grid-line' || obj.id === 'shape-border' || (obj.type === 'path' && obj.stroke === '#e0e0e0' && !obj.selectable) || (obj.id === 'custom-grid-border')) {
               canvas.remove(obj);
            }
         });
@@ -306,13 +374,31 @@ export function useLayerCanvas({
         if (initialState?.customGrid) {
             initialState.customGrid.forEach((_cell: any, index: number) => {
                 const bounds = getCellBounds(index);
+                const { thickness } = gridConfig;
+                
+                // Determine overlaps with canvas edges to inset borders
+                // This prevents outer borders from being half-clipped (and looking 0.5x thickness)
+                const atLeft = bounds.left < 1;
+                const atTop = bounds.top < 1;
+                const atRight = Math.abs(bounds.left + bounds.width - canvasWidth) < 1;
+                const atBottom = Math.abs(bounds.top + bounds.height - canvasHeight) < 1;
+
+                const insetL = atLeft ? thickness / 2 : 0;
+                const insetT = atTop ? thickness / 2 : 0;
+                const insetR = atRight ? thickness / 2 : 0;
+                const insetB = atBottom ? thickness / 2 : 0;
+
+                const finalWidth = bounds.width - insetL - insetR;
+                const finalHeight = bounds.height - insetT - insetB;
+                const finalLeft = bounds.left + insetL + (finalWidth / 2);
+                const finalTop = bounds.top + insetT + (finalHeight / 2);
                 
                 // Draw rect for each cell border
                 const rect = new Rect({
-                    left: bounds.centerX,
-                    top: bounds.centerY,
-                    width: bounds.width,
-                    height: bounds.height,
+                    left: finalLeft,
+                    top: finalTop,
+                    width: finalWidth,
+                    height: finalHeight,
                     originX: 'center',
                     originY: 'center',
                     fill: 'transparent',
@@ -375,6 +461,60 @@ export function useLayerCanvas({
         
         gridGroup.forEach(obj => canvas.add(obj));
 
+        // Render Shape Cell Borders (on top of grid)
+        const shapes = initialState?.customShapes || [];
+        const shapeBorders: FabricObject[] = [];
+        
+        shapes.forEach((shape: any) => {
+          const x = shape.x * canvasWidth;
+          const y = shape.y * canvasHeight;
+          const w = shape.width * canvasWidth;
+          const h = shape.height * canvasHeight;
+          const cx = x + w / 2;
+          const cy = y + h / 2;
+          
+          let border: FabricObject;
+          
+          if (shape.shapeType === 'circle') {
+            const radius = Math.min(w, h) / 2;
+            const pathData = `M ${cx},${cy - radius} ` +
+              `A ${radius},${radius} 0 1,1 ${cx},${cy + radius} ` +
+              `A ${radius},${radius} 0 1,1 ${cx},${cy - radius} Z`;
+            border = new Path(pathData, {
+              fill: 'transparent',
+              stroke: gridConfig.color,
+              strokeWidth: gridConfig.thickness,
+              selectable: false,
+              evented: false,
+              // @ts-ignore
+              id: 'shape-border',
+              excludeFromExport: false,
+            });
+          } else {
+            // Default rectangle for other shapes (heart, star, hexagon - simplified)
+            border = new Rect({
+              left: cx,
+              top: cy,
+              width: w,
+              height: h,
+              originX: 'center',
+              originY: 'center',
+              fill: 'transparent',
+              stroke: gridConfig.color,
+              strokeWidth: gridConfig.thickness,
+              selectable: false,
+              evented: false,
+              // @ts-ignore
+              id: 'shape-border',
+              excludeFromExport: false,
+            });
+          }
+          
+          shapeBorders.push(border);
+        });
+        
+        shapeBorders.forEach(obj => canvas.add(obj));
+
         // Layering Enforcement
         canvas.getObjects().forEach(obj => {
             if (obj.type === 'image') canvas.sendObjectToBack(obj);
@@ -383,6 +523,12 @@ export function useLayerCanvas({
          canvas.getObjects().forEach(obj => {
             // @ts-ignore
             if (obj.id === 'grid-line') canvas.bringObjectToFront(obj);
+        });
+        
+        // Shape borders on top of grid-lines
+        canvas.getObjects().forEach(obj => {
+            // @ts-ignore
+            if (obj.id === 'shape-border') canvas.bringObjectToFront(obj);
         });
   
         canvas.getObjects().forEach(obj => {
@@ -424,15 +570,36 @@ export function useLayerCanvas({
     const y = (e.clientY - rect.top) / (rect.height / canvasHeight);
 
     let index = -1;
-    if (initialState?.customGrid) {
-        index = initialState?.customGrid.findIndex((cell: any) => {
+    const gridCells = initialState?.customGrid || [];
+    const shapes = initialState?.customShapes || [];
+
+    // Check Shapes FIRST (they're on top)
+    if (shapes.length > 0) {
+      const shapeIdx = shapes.findIndex((shape: any) => {
+        const cx = shape.x * canvasWidth;
+        const cy = shape.y * canvasHeight;
+        const cw = shape.width * canvasWidth;
+        const ch = shape.height * canvasHeight;
+        return x >= cx && x <= cx + cw && y >= cy && y <= cy + ch;
+      });
+      if (shapeIdx >= 0) {
+        index = gridCells.length + shapeIdx;
+      }
+    }
+
+    // If not in a shape, check Custom Grid
+    if (index < 0 && gridCells.length > 0) {
+        index = gridCells.findIndex((cell: any) => {
             const cx = cell.x * canvasWidth;
             const cy = cell.y * canvasHeight;
             const cw = cell.width * canvasWidth;
             const ch = cell.height * canvasHeight;
             return x >= cx && x <= cx + cw && y >= cy && y <= cy + ch;
         });
-    } else {
+    }
+    
+    // Legacy Check
+    if (index < 0 && gridCells.length === 0 && shapes.length === 0) {
         const col = Math.floor(x / (canvasWidth / cols));
         const row = Math.floor(y / (canvasHeight / rows));
         index = row * cols + col;
@@ -465,7 +632,7 @@ export function useLayerCanvas({
         top: bounds.centerY,
         originX: 'center',
         originY: 'center',
-        clipPath: createClipRect(cellIndex)
+        clipPath: createClipPath(cellIndex)
       });
 
       canvas.add(img);
@@ -491,7 +658,7 @@ export function useLayerCanvas({
       canvas.renderAll();
       canvas.fire('object:added', { target: img });
     });
-  }, [getCellBounds, createClipRect]);
+  }, [getCellBounds, createClipPath]);
 
 
   // Actions
@@ -527,6 +694,18 @@ export function useLayerCanvas({
       fabricRef.current.discardActiveObject();
       fabricRef.current.renderAll();
       setIsObjectSelected(false);
+    }
+  }, []);
+
+  const bringActiveObjectToFront = useCallback(() => {
+    if (!fabricRef.current) return;
+    const active = fabricRef.current.getActiveObject();
+    if (active) {
+      fabricRef.current.bringObjectToFront(active);
+      // Keep highlights on top
+      const highlight = fabricRef.current.getObjects().find((obj: any) => obj.id === 'active-cell-highlight');
+      if (highlight) fabricRef.current.bringObjectToFront(highlight);
+      fabricRef.current.requestRenderAll();
     }
   }, []);
 
@@ -658,6 +837,10 @@ export function useLayerCanvas({
     if (initialState?.customGrid) {
       json.customGrid = initialState.customGrid;
     }
+    
+    if (initialState?.customShapes) {
+      json.customShapes = initialState.customShapes;
+    }
 
     return json;
   }, [gridConfig, initialState]);
@@ -711,6 +894,7 @@ export function useLayerCanvas({
     generateThumbnail,
     getJsonState,
     deleteActiveObject,
+    bringActiveObjectToFront,
     isObjectSelected,
     activeObjectRect,
     isDragging,

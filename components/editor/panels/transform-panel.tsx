@@ -1,4 +1,4 @@
-import { Sliders, SunMedium, CloudLightning, Palette, Grid, RotateCw, Contrast } from 'lucide-react';
+import { Sliders, SunMedium, CloudLightning, Palette, Grid, RotateCw, Contrast, Layers } from 'lucide-react';
 
 interface TransformPanelProps {
   activeFilters?: {
@@ -9,9 +9,10 @@ interface TransformPanelProps {
     sepia: boolean;
   };
   onUpdateFilter: (type: string, value: number | boolean) => void;
+  onBringToFront: () => void;
 }
 
-export default function TransformPanel({ activeFilters, onUpdateFilter }: TransformPanelProps) {
+export default function TransformPanel({ activeFilters, onUpdateFilter, onBringToFront }: TransformPanelProps) {
   if (!activeFilters) {
      return (
         <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400">
@@ -120,6 +121,15 @@ export default function TransformPanel({ activeFilters, onUpdateFilter }: Transf
                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-300 dark:peer-focus:ring-orange-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-orange-500"></div>
              </label>
          </div>
+
+         {/* Bring to Front (Layer Control) */}
+         <button
+           onClick={onBringToFront}
+           className="w-full flex items-center justify-center gap-2 p-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors"
+         >
+           <Layers size={18} />
+           Bring to Front
+         </button>
 
       </div>
     </div>

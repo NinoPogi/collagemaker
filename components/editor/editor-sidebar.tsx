@@ -22,6 +22,7 @@ interface EditorSidebarProps {
   onUpdateActiveImageFilter: (type: string, value: number | boolean) => void;
   gridConfig: { color: string, thickness: number };
   onUpdateGridConfig: (updates: any) => void;
+  onBringToFront: () => void;
 }
 
 export default function EditorSidebar({
@@ -38,7 +39,8 @@ export default function EditorSidebar({
   activeObjectFilters,
   onUpdateActiveImageFilter,
   gridConfig,
-  onUpdateGridConfig
+  onUpdateGridConfig,
+  onBringToFront
 }: EditorSidebarProps) {
   
   const tabs = [
@@ -76,6 +78,7 @@ export default function EditorSidebar({
               return <TransformPanel 
                    activeFilters={activeObjectFilters}
                    onUpdateFilter={onUpdateActiveImageFilter}
+                   onBringToFront={onBringToFront}
               />;
           case 'text':
               return <TextPanel 

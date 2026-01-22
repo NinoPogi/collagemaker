@@ -41,7 +41,8 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
     activeObjectFilters,
     updateActiveImageFilter,
     gridConfig,
-    updateGridConfig
+    updateGridConfig,
+    bringActiveObjectToFront
   } = useLayerCanvas({
     project,
     onCanvasChange: () => {
@@ -177,6 +178,7 @@ export default function CollageEditor({ project, initialImages }: CollageEditorP
              onUpdateActiveImageFilter={updateActiveImageFilter}
              gridConfig={gridConfig}
              onUpdateGridConfig={updateGridConfig}
+             onBringToFront={bringActiveObjectToFront}
              onSelectImage={(image) => {
                  addImageToActiveCell(image.url);
                  // Auto-close on mobile
