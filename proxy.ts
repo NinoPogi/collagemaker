@@ -14,9 +14,7 @@ export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req) && !userId) {
     const signInUrl = new URL('/get-started', req.url)
     return NextResponse.redirect(signInUrl)
-  } else if (createRouteMatcher(['/get-started'])(req) && userId) {
-    return NextResponse.redirect(new URL('/', req.url))
-  }
+  } 
 })
 
 export const config = {

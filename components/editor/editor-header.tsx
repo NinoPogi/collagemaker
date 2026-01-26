@@ -23,21 +23,21 @@ export default function EditorHeader({
   return (
     <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 z-30 relative shadow-sm">
       {/* Left: Back & Title */}
-      <div className="flex items-center gap-4 flex-1">
+      <div className="flex items-center gap-4 flex-1 min-w-0">
         <button 
           onClick={onBack}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-600 dark:text-slate-300"
+          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-600 dark:text-slate-300 flex-shrink-0"
         >
           <ArrowLeft size={20} />
         </button>
         
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0 flex-1">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="font-bold text-lg bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-orange-500/20 rounded-lg px-2 -ml-2 text-slate-800 dark:text-white"
+            className="font-bold text-lg bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-orange-500/20 rounded-lg px-2 -ml-2 text-slate-800 dark:text-white w-full truncate"
           />
-          <div className="flex items-center gap-2 px-2">
+          <div className="flex items-center gap-2 px-2 flex-shrink-0">
             {isSaving ? (
               <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-orange-500">
                 <Loader2 size={10} className="animate-spin" />
@@ -75,7 +75,7 @@ export default function EditorHeader({
         </button>
 
         {/* Profile */}
-        <div className="ml-2 pl-2 border-l border-slate-200 dark:border-slate-700">
+        <div className="ml-2 pl-2 border-l border-slate-200 dark:border-slate-700" suppressHydrationWarning>
             <UserButton afterSignOutUrl="/" />
         </div>
       </div>

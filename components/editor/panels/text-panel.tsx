@@ -1,14 +1,17 @@
-import { Type, Heading1, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Type, Heading1, AlignLeft, AlignCenter, AlignRight, Check } from 'lucide-react';
+import ColorGradientPicker from './color-gradient-picker';
 
 interface TextPanelProps {
   onAddText: () => void;
   properties?: {
     fontFamily: string;
     fontSize: number;
-    fill: string;
+    fill: string | object;
     textAlign: string;
     fontWeight: string | number;
     fontStyle: string;
+    stroke?: string | object;
+    strokeWidth?: number;
   };
   onUpdate: (updates: any) => void;
 }
@@ -59,76 +62,108 @@ export default function TextPanel({ onAddText, properties, onUpdate }: TextPanel
              </div>
           </div>
 
-          {/* Style & Color */}
+          
+          {/* Font Family & Size */}
           <div className="flex gap-2 mb-4">
-               {/* Bold */}
+               <div className="flex-[2]">
+                  <label className="text-[10px] text-slate-400 mb-1 block">Font Family</label>
+                  <select
+                      value={properties?.fontFamily || 'Inter, sans-serif'}
+                      onChange={(e) => onUpdate({ fontFamily: e.target.value })}
+                      className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none"
+                  >
+                      <option value="Inter, sans-serif">Inter</option>
+                      <option value="Roboto, sans-serif">Roboto</option>
+                      <option value="Open Sans, sans-serif">Open Sans</option>
+                      <option value="Montserrat, sans-serif">Montserrat</option>
+                      <option value="Playfair Display, serif">Playfair Display</option>
+                      <option value="Lato, sans-serif">Lato</option>
+                      <option value="Poppins, sans-serif">Poppins</option>
+                      <option value="Arial, sans-serif">Arial</option>
+                      <option value="Times New Roman, serif">Times New Roman</option>
+                      <option value="Courier New, monospace">Courier New</option>
+                      <option value="Brush Script MT, cursive">Brush Script</option>
+                  </select>
+               </div>
+               <div className="flex-1">
+                  <label className="text-[10px] text-slate-400 mb-1 block">Size</label>
+                  <input 
+                      type="number"
+                      value={properties?.fontSize || 40}
+                      onChange={(e) => onUpdate({ fontSize: parseInt(e.target.value) })}
+                      className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
+               </div>
+          </div>
+
+          {/* Style Controls (Bold/Italic) */}
+          <div className="flex gap-2 mb-4">
                <button
                   onClick={() => onUpdate({ fontWeight: properties?.fontWeight === 'bold' ? 'normal' : 'bold' })}
-                  className={`p-3 rounded-xl border flex-1 flex items-center justify-center transition-all ${
+                  className={`p-2 rounded-lg border flex-1 flex items-center justify-center gap-2 transition-all ${
                      properties?.fontWeight === 'bold'
                         ? 'bg-orange-50 border-orange-200 text-orange-500 dark:bg-orange-900/20 dark:border-orange-500/30'
                         : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
                   }`}
                >
-                  <Bold size={18} />
+                  <Bold size={16} /> <span className="text-xs">Bold</span>
                </button>
 
-               {/* Italic */}
                <button
                   onClick={() => onUpdate({ fontStyle: properties?.fontStyle === 'italic' ? 'normal' : 'italic' })}
-                   className={`p-3 rounded-xl border flex-1 flex items-center justify-center transition-all ${
+                   className={`p-2 rounded-lg border flex-1 flex items-center justify-center gap-2 transition-all ${
                      properties?.fontStyle === 'italic'
                         ? 'bg-orange-50 border-orange-200 text-orange-500 dark:bg-orange-900/20 dark:border-orange-500/30'
                         : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
                   }`}
                >
-                  <Italic size={18} />
+                  <Italic size={16} /> <span className="text-xs">Italic</span>
                </button>
-
-               {/* Color */}
-               <div className="relative flex-1">
-                   <input
-                      type="color"
-                      value={typeof properties?.fill === 'string' ? properties.fill : '#000000'}
-                      onChange={(e) => onUpdate({ fill: e.target.value })}
-                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
-                   />
-                   <div 
-                      className="w-full h-full rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-2"
-                      style={{ backgroundColor: typeof properties?.fill === 'string' ? properties.fill : '#ffffff' }}
-                   >
-                       <Palette size={16} className="mix-blend-difference text-white" />
-                   </div>
-               </div>
           </div>
 
-          {/* Size & Family */}
-          <div className="space-y-2 mb-[8em]">
-              <div>
-                 <label className="text-[10px] text-slate-400 mb-1 block">Font Size</label>
-                 <input 
-                     type="number"
-                     value={properties?.fontSize || 40}
-                     onChange={(e) => onUpdate({ fontSize: parseInt(e.target.value) })}
-                     className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none"
+          {/* Text Color */}
+          <div className="mb-6">
+              <ColorGradientPicker 
+                  label="Text Color" 
+                  value={properties?.fill || '#000000'} 
+                  onChange={(val) => onUpdate({ fill: val })} 
+              />
+          </div>
+
+          {/* Outline / Stroke */}
+          <div className="mb-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex justify-between items-center mb-2">
+                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Outline</label>
+                 
+                 {/* Enable/Disable Toggle effectively via Width */}
+              </div>
+              
+              <div className="space-y-3">
+                 <div>
+                    <div className="flex justify-between mb-1">
+                        <label className="text-[10px] text-slate-400">Width</label>
+                        <span className="text-[10px] text-slate-500">{properties?.strokeWidth || 0}px</span>
+                    </div>
+                    <input
+                       type="range"
+                       min="0"
+                       max="20"
+                       step="0.5"
+                       value={properties?.strokeWidth || 0}
+                       onChange={(e) => onUpdate({ strokeWidth: parseFloat(e.target.value) })}
+                       className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                    />
+                 </div>
+                 
+                 <ColorGradientPicker 
+                     label="Outline Color" 
+                     value={properties?.stroke || '#000000'} 
+                     onChange={(val) => onUpdate({ stroke: val })} 
                  />
               </div>
-              <div>
-                 <label className="text-[10px] text-slate-400 mb-1 block">Font Family</label>
-                 <select
-                     value={properties?.fontFamily || 'Inter, sans-serif'}
-                     onChange={(e) => onUpdate({ fontFamily: e.target.value })}
-                     className="w-full p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm font-medium focus:ring-2 focus:ring-orange-500 outline-none"
-                 >
-                     <option value="Inter, sans-serif">Inter</option>
-                     <option value="Arial, sans-serif">Arial</option>
-                     <option value="Times New Roman, serif">Times New Roman</option>
-                     <option value="Georgia, serif">Georgia</option>
-                     <option value="Courier New, monospace">Courier New</option>
-                     <option value="Brush Script MT, cursive">Brush Script</option>
-                 </select>
-              </div>
           </div>
+
+
 
           {!isSelected && (
               <div className="absolute inset-0 bg-white/50 dark:bg-slate-800/50 backdrop-blur-[1px] flex items-center justify-center rounded-xl z-20">

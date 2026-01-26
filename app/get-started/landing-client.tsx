@@ -12,7 +12,7 @@ export default function LandingClient() {
       <Hero />
       
       {/* Demo Section */}
-      <section className="py-20 px-6 bg-white/50 dark:bg-slate-800/50">
+      {/* <section className="py-20 px-6 bg-white/50 dark:bg-slate-800/50">
         <div className="max-w-5xl mx-auto">
           <div className="relative group">
             <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-orange-600 rounded-3xl blur-xl opacity-20 group-hover:opacity-30 transition-opacity duration-300"></div>
@@ -29,7 +29,7 @@ export default function LandingClient() {
             </div>
           </div>
         </div>
-      </section>
+      </section> */}
 
       <Features />
       <CTA />

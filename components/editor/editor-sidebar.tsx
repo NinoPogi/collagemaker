@@ -47,7 +47,7 @@ export default function EditorSidebar({
     { id: 'upload', icon: <Upload size={20} />, label: 'Upload', disabled: false },
     { id: 'images', icon: <ImageIcon size={20} />, label: 'Images' },
     { id: 'text', icon: <Type size={20} />, label: 'Text' }, 
-    { id: 'border', icon: <LayoutGrid size={20} />, label: 'Border' },
+    { id: 'border', icon: <LayoutGrid size={20} />, label: 'Border', disabled: true },
     // { id: 'crop', icon: <Crop size={20} />, label: 'Crop', disabled: true }, 
   ];
 

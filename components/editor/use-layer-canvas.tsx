@@ -1,5 +1,5 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
-import { Canvas, FabricImage, IText, Rect, FabricObject, Path, InteractiveFabricObject, filters } from 'fabric';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { Canvas, FabricImage, IText, Rect, FabricObject, Path, InteractiveFabricObject, filters, Gradient } from 'fabric';
 import { Project } from '@/types/project';
 
 export interface LayerCanvasState {
@@ -27,9 +27,11 @@ export function useLayerCanvas({
   const initialized = useRef(false);
   const canvasWidth = project.canvasWidth;
   const canvasHeight = project.canvasHeight;
-  const initialState = typeof project.canvasState === 'string'
-    ? JSON.parse(project.canvasState)
-    : project.canvasState;
+  const initialState = useMemo(() => {
+    return typeof project.canvasState === 'string'
+      ? JSON.parse(project.canvasState)
+      : project.canvasState;
+  }, [project.canvasState]);
 
   // Get grid configuration from project (with fallbacks)
   const rows = project.gridRows || 1;
@@ -261,6 +263,8 @@ export function useLayerCanvas({
             textAlign: (active as IText).textAlign,
             fontWeight: (active as IText).fontWeight,
             fontStyle: (active as IText).fontStyle,
+            stroke: (active as IText).stroke,
+            strokeWidth: (active as IText).strokeWidth,
           });
         } else {
           setActiveObjectProperties(null);
@@ -329,7 +333,7 @@ export function useLayerCanvas({
     canvas.on('object:modified', handleObjectModified);
     canvas.on('object:removed', (e) => {
       // @ts-ignore
-      if (e.target && (e.target.id === 'grid-line' || e.target.id === 'active-cell-highlight')) return;
+      if (e.target && (e.target.id === 'grid-line' || e.target.id === 'active-cell-highlight' || e.target.id === 'shape-border' || e.target.id === 'custom-grid-border')) return;
       triggerSave();
     });
 
@@ -713,7 +717,19 @@ export function useLayerCanvas({
     if (!fabricRef.current) return;
     const active = fabricRef.current.getActiveObject();
     if (active) {
-      active.set(updates);
+      const finalUpdates: any = { ...updates };
+      
+      // Handle Gradient for Fill
+      if (updates.fill && typeof updates.fill === 'object' && (updates.fill as any).colorStops) {
+          finalUpdates.fill = new Gradient(updates.fill as any);
+      }
+      
+      // Handle Gradient for Stroke
+      if (updates.stroke && typeof updates.stroke === 'object' && (updates.stroke as any).colorStops) {
+          finalUpdates.stroke = new Gradient(updates.stroke as any);
+      }
+
+      active.set(finalUpdates);
       active.setCoords();
       fabricRef.current.requestRenderAll();
 
@@ -856,25 +872,26 @@ export function useLayerCanvas({
 
     const bounds = getCellBounds(activeCell);
 
-    const rect = new Rect({
-      left: bounds.centerX,
-      top: bounds.centerY,
-      width: bounds.width,
-      height: bounds.height,
-      originX: 'center',
-      originY: 'center',
-      fill: 'transparent',
-      stroke: '#f97316',
-      strokeWidth: 4,
-      selectable: false,
-      evented: false,
-      // @ts-ignore
-      id: 'active-cell-highlight',
-      excludeFromExport: true
-    });
+    // const rect = new Rect({
+    //   left: bounds.centerX,
+    //   top: bounds.centerY,
+    //   width: bounds.width,
+    //   height: bounds.height,
+    //   originX: 'center',
+    //   originY: 'center',
+    //   fill: 'transparent',
+    //   stroke: '#f97316',
+    //   strokeWidth: 4,
+    //   strokeDashArray: [10, 5],
+    //   selectable: false,
+    //   evented: false,
+    //   // @ts-ignore
+    //   id: 'active-cell-highlight',
+    //   excludeFromExport: true
+    // });
 
-    canvas.add(rect);
-    canvas.requestRenderAll();
+    // canvas.add(rect);
+    // canvas.requestRenderAll();
   }, [activeCell, getCellBounds]);
 
   useEffect(() => {
