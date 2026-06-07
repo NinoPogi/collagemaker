@@ -1,84 +1,104 @@
-'use client';
-
-import { ArrowLeft, Cloud, Download, Save, Loader2 } from 'lucide-react';
-import { UserButton } from '@clerk/nextjs';
+import { Skeleton } from "@/components/ui/skeleton";
+import { SignedIn, UserButton, useUser } from "@clerk/nextjs";
+import { ChevronLeft, Save, Download, LoaderCircle, Undo2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { useRef, useEffect } from "react";
 
 interface EditorHeaderProps {
   title: string;
   setTitle: (title: string) => void;
+  handleSave: () => void;
+  handleUpdateName: () => Promise<void>;
+  handleDownload: () => void;
   isSaving: boolean;
-  onBack: () => void;
-  onDownload: () => void;
-  onManualSave: () => void;
 }
 
 export default function EditorHeader({
   title,
   setTitle,
+  handleSave,
+  handleUpdateName,
+  handleDownload,
   isSaving,
-  onBack,
-  onDownload,
-  onManualSave
 }: EditorHeaderProps) {
+  const { isLoaded } = useUser();
+  const isInitialRender = useRef(true);
+
+  useEffect(() => {
+    if (isInitialRender.current) {
+      isInitialRender.current = false;
+      return;
+    }
+  
+  const timer = setTimeout(() => {
+    handleUpdateName();
+  }, 800);
+
+  return () => clearTimeout(timer);
+  },[title, handleUpdateName]); 
+
   return (
-    <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 z-30 relative shadow-sm">
-      {/* Left: Back & Title */}
-      <div className="flex items-center gap-4 flex-1 min-w-0">
-        <button 
-          onClick={onBack}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-600 dark:text-slate-300 flex-shrink-0"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        
-        <div className="flex flex-col min-w-0 flex-1">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="font-bold text-lg bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-orange-500/20 rounded-lg px-2 -ml-2 text-slate-800 dark:text-white w-full truncate"
-          />
-          <div className="flex items-center gap-2 px-2 flex-shrink-0">
-            {isSaving ? (
-              <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-orange-500">
-                <Loader2 size={10} className="animate-spin" />
-                Saving...
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-slate-400">
-                <Cloud size={10} />
-                Saved
-              </span>
-            )}
-          </div>
-        </div>
+    <div className="grid grid-cols-2 items-center py-2 px-1 ">
+      {/* Left side */}
+      <div className="flex items-center gap-2 min-w-0">
+        <Button variant="ghost" size="icon" asChild className="shrink-0">
+          <Link href="/">
+            <ChevronLeft />
+          </Link>
+        </Button>
+        <Input
+          variant="title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
       </div>
 
-      {/* Right: Actions */}
-      <div className="flex items-center gap-2 md:gap-4">
-        {/* Manual Save (Desktop only, or hidden if autosave is trusted) */}
-        <button
-          onClick={onManualSave}
-          className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-          title="Manual Save"
+      {/* Right side */}
+      <div className="flex justify-end items-center gap-2 md:gap-4">
+        <Button variant="ghost" size="icon" className="size-5" disabled>
+          <Undo2 />
+        </Button>
+        <Button
+          className="bg-orange-500 hover:bg-orange-600 text-white border-none"
+          onClick={handleSave}
+          disabled={isSaving}
         >
-          <Save size={18} />
-          <span className="hidden lg:inline">Save</span>
-        </button>
+          {isSaving ? (
+            <LoaderCircle className="animate-spin size-4 lg:mr-2" />
+          ) : (
+            <Save className="size-4 lg:mr-2" />
+          )}
+          <span className="hidden lg:inline">
+            {isSaving ? "Saving..." : "Save"}
+          </span>
+        </Button>
 
-        {/* Download Button */}
-        <button
-          onClick={onDownload}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg font-bold hover:scale-105 active:scale-95 transition-all shadow-lg shadow-orange-500/10"
+        <Button
+          className="bg-orange-500 hover:bg-orange-600 text-white border-none"
+          onClick={handleDownload}
         >
-          <Download size={18} />
-          <span className="hidden md:inline">Export</span>
-        </button>
+          <Download className="size-4 lg:mr-2" />
+          <span className="hidden lg:inline">Export</span>
+        </Button>
 
-        {/* Profile */}
-        <div className="ml-2 pl-2 border-l border-slate-200 dark:border-slate-700" suppressHydrationWarning>
-            <UserButton afterSignOutUrl="/" />
+        <div className="flex items-center justify-center">
+          {!isLoaded ? (
+            <Skeleton className="h-8 w-8 rounded-full bg-slate-200" />
+          ) : (
+            <SignedIn>
+              <UserButton
+                appearance={{
+                  elements: {
+                    userButtonAvatarBox: "h-8 w-8",
+                  },
+                }}
+              />
+            </SignedIn>
+          )}
         </div>
       </div>
-    </header>
+    </div>
   );
 }

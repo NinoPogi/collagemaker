@@ -1,27 +1,57 @@
-'use client';
+"use client";
 
-import { Project } from '@/types/project';
-import DashboardHeader from '@/components/dashboard/dashboard_header';
-import EmptyState from '@/components/dashboard/empty_state';
-import ProjectsGrid from '@/components/dashboard/projects_grid';
-import CreateProjectModal from '@/components/modals/create-project-modal';
-import { useState } from 'react';
+import { Project } from "@/types/project";
+import DashboardHeader from "@/components/dashboard/dashboard-header";
+import EmptyState from "@/components/dashboard/empty-state";
+import ProjectsGrid from "@/components/dashboard/projects-grid";
+import CreateProjectModal from "@/components/modals/create-project-modal";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createProject } from "@/app/actions";
 
 interface DashboardClientProps {
   projects: Project[];
 }
 
-export default function DashboardClient({ projects = [] }: DashboardClientProps) {
+export default function DashboardClient({
+  projects = [],
+}: DashboardClientProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const router = useRouter();
 
-  const handleNewProject = () => {
-    setIsModalOpen(true);
+  const handleNewProject = async () => {
+    // setIsModalOpen(true);
+    try {
+      const width = 800;
+      const height = 800;
+
+      const result = await createProject({
+        title: "Untitled",
+        canvasState: {
+          width: width,
+          height: height,
+          backgroundColor: "#ffffff",
+        },
+        canvasWidth: width,
+        canvasHeight: height,
+        gridRows: 1,
+        gridCols: 2,
+      });
+
+      if (!result.success) {
+        return;
+      }
+
+      router.push(`/editor/${result.project?.id}`);
+    } catch (err) {
+      console.log(err);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      <DashboardHeader 
-        projectCount={projects.length} 
+      <DashboardHeader
+        projectCount={projects.length}
         onNewProject={handleNewProject}
       />
 
@@ -33,9 +63,9 @@ export default function DashboardClient({ projects = [] }: DashboardClientProps)
         )}
       </main>
 
-      <CreateProjectModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <CreateProjectModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
       />
     </div>
   );

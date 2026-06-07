@@ -1,4 +1,5 @@
 import { CollageSize, GridLayout } from '../types/project';
+import { Upload, Shapes, Type, Grid2x2, PencilLine } from "lucide-react";
 
 export const COLLAGE_SIZES: CollageSize[] = [
   {
@@ -61,6 +62,13 @@ export const COLLAGE_SIZES: CollageSize[] = [
 
 export const GRID_LAYOUTS: GridLayout[] = [
   {
+    id: 'single',
+    name: 'No Grid',
+    rows: 1,
+    cols: 1,
+    preview: 'grid'
+  },
+  {
     id: 'grid-2x2',
     name: '2×2 Grid',
     rows: 2,
@@ -102,11 +110,60 @@ export const GRID_LAYOUTS: GridLayout[] = [
     cols: 3,
     preview: 'grid'
   },
-  {
-    id: 'blank',
-    name: 'Blank Canvas',
-    rows: 0,
-    cols: 0,
-    preview: 'blank'
-  }
+  //   {
+  //   id: 'custom-grid',
+  //   name: 'Custom Grid',
+  //   rows: 0,
+  //   cols: 0,
+  //   preview: 'blank'
+  // }
 ];
+
+export const TOOL_ITEMS = [
+  {
+    id: 'grid',
+    name: 'Grid',
+    icon: Grid2x2,
+    disabled: false,
+    withPanel: true,
+  },
+  {
+    id: 'upload',
+    name: 'Upload',
+    icon: Upload,
+    disabled: false,
+    withPanel: true,
+  },
+  {
+    id: 'shapes',
+    name: 'Shapes',
+    icon: Shapes,
+    disabled: false,
+    withPanel: true,
+  },
+  {
+    id: 'text',
+    name: 'Add Text',
+    icon: Type,
+    disabled: false,
+    withPanel: false,
+    },
+  {
+    id: 'draw',
+    name: 'Draw Tools',
+    icon: PencilLine,
+    disabled: false,
+    withPanel: false,
+  },
+
+];
+
+export const SHAPES_LIST = [
+  {id: 'line', name:"Line", src:"/minus.svg"},
+  {id: 'arrow-right', name:"Arrow Right", src:"/move-right.svg"},
+  {id: 'circle', name:"Circle", src:"/circle.svg"},
+  {id: 'square', name:"Square", src:"/square.svg"},
+  {id: 'triangle', name:"Triangle", src:"/triangle.svg"},
+  {id: 'star', name:"Star", src:"/star.svg"},
+  {id: 'heart', name:"Heart", src:"/heart.svg"},
+]

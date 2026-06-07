@@ -5,6 +5,8 @@ import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { Prisma } from '@/lib/generated/prisma/client'
 import { imagekit } from '@/lib/imagekit'
+import { CanvasState } from '@/types/project'
+
 
 export async function uploadImage(formData: FormData, projectId?: string) {
   try {
@@ -18,7 +20,17 @@ export async function uploadImage(formData: FormData, projectId?: string) {
 
     const folder = projectId ? `projects/${projectId}` : 'thumbnails';
 
-    const result = await imagekit.upload({
+    if (projectId) {
+      const count = await prisma.projectImage.count({
+        where: { projectId },
+      });
+
+      if (count >= 20) {
+        return { success: false, error: "Limit reached (20 images max)" };
+      }
+    }
+
+    const result = await imagekit.files.upload({
       file, 
       fileName,
       useUniqueFileName: useUniqueFileName, 
@@ -28,9 +40,9 @@ export async function uploadImage(formData: FormData, projectId?: string) {
     if (projectId) {
        await prisma.projectImage.create({
           data: {
-             url: result.url,
-             fileId: result.fileId,
-             thumbnail: result.thumbnailUrl,
+             url: result.url!,
+             fileId: result.fileId!,
+             thumbnail: result.thumbnailUrl!,
              projectId: projectId
           }
        });
@@ -60,7 +72,7 @@ export async function getProjectImages(projectId: string) {
    }
 }
 
-export async function deleteProjectImage(imageId: string) {
+export async function deleteImage(imageId: string) {
     try {
         const image = await prisma.projectImage.findUnique({
             where: { id: imageId },
@@ -71,14 +83,13 @@ export async function deleteProjectImage(imageId: string) {
         }
 
         if (image.fileId) {
-            await imagekit.deleteFile(image.fileId);
+            await imagekit.files.delete(image.fileId);
         }
 
         await prisma.projectImage.delete({
             where: { id: imageId },
         });
 
-        revalidatePath(`/editor/${image.projectId}`);
         return { success: true };
     } catch (error) {
         console.error('Delete image error:', error);
@@ -88,7 +99,7 @@ export async function deleteProjectImage(imageId: string) {
 
 export async function createProject(data: {
   title: string
-  canvasState: Prisma.InputJsonValue
+  canvasState: CanvasState
   canvasWidth: number
   canvasHeight: number
   gridRows?: number
@@ -109,10 +120,18 @@ export async function createProject(data: {
       return { success: false, error: 'User not found in database' }
     }
 
+    const projectCount = await prisma.project.count({
+      where: { ownerId: user.id },
+    });
+
+    if (projectCount >= 10) {
+      return { success: false, error: 'Limit reached (10 projects max)' };
+    }
+
     const project = await prisma.project.create({
       data: {
         title: data.title,
-        canvasState: data.canvasState,
+        canvasState: data.canvasState as any,
         canvasWidth: data.canvasWidth,
         canvasHeight: data.canvasHeight,
         gridRows: data.gridRows ?? 1,
@@ -121,7 +140,7 @@ export async function createProject(data: {
       },
     })
 
-    revalidatePath('/dashboard')
+    revalidatePath('/')
     return { success: true, project }
   } catch (error) {
     console.error('Create project error:', error)
@@ -137,7 +156,7 @@ export async function getUserProjects() {
     const { userId } = await auth()
 
     if (!userId) {
-      return []
+      return { success: false, error: 'Unauthorized' }
     }
 
     const user = await prisma.user.findUnique({
@@ -164,6 +183,8 @@ export async function updateProject(
     canvasWidth?: number
     canvasHeight?: number
     thumbnailUrl?: string
+    gridRows?: number
+    gridCols?: number
   }
 ) {
   try {
@@ -188,14 +209,15 @@ export async function updateProject(
     if (data.canvasWidth !== undefined) updateData.canvasWidth = data.canvasWidth;
     if (data.canvasHeight !== undefined) updateData.canvasHeight = data.canvasHeight;
     if (data.thumbnailUrl !== undefined) updateData.thumbnailUrl = data.thumbnailUrl;
+    if (data.gridRows !== undefined) updateData.gridRows = data.gridRows;
+    if (data.gridCols !== undefined) updateData.gridCols = data.gridCols;
 
     const updated = await prisma.project.update({
       where: { id: projectId },
       data: updateData,
     })
 
-    revalidatePath('/dashboard')
-    revalidatePath(`/editor/${projectId}`)
+
     return { success: true, project: updated }
   } catch (error) {
     console.error('Update project error:', error)
@@ -223,19 +245,17 @@ export async function deleteProject(projectId: string) {
       return { success: false, error: 'Unauthorized' }
     }
 
-    // Delete from ImageKit (Folder)
     try {
-        await imagekit.deleteFolder(`projects/${projectId}`);
+        await imagekit.folders.delete({ folderPath: `projects/${projectId}` });
     } catch (err) {
         console.log('ImageKit folder might not exist or error:', err);
-        // Continue to delete project from DB even if ImageKit cleanup fails partially
     }
 
     await prisma.project.delete({
       where: { id: projectId },
     })
 
-    revalidatePath('/dashboard')
+    revalidatePath('/')
     return { success: true }
   } catch (error) {
     console.error('Delete project error:', error)
