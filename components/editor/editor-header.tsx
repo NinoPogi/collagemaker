@@ -24,20 +24,20 @@ export default function EditorHeader({
   isSaving,
 }: EditorHeaderProps) {
   const { isLoaded } = useUser();
-  const isInitialRender = useRef(true);
+  const lastSavedTitleRef = useRef(title);
 
   useEffect(() => {
-    if (isInitialRender.current) {
-      isInitialRender.current = false;
+    if (title === lastSavedTitleRef.current) {
       return;
     }
-  
-  const timer = setTimeout(() => {
-    handleUpdateName();
-  }, 800);
 
-  return () => clearTimeout(timer);
-  },[title, handleUpdateName]); 
+    const timer = setTimeout(async () => {
+      await handleUpdateName();
+      lastSavedTitleRef.current = title;
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [title, handleUpdateName]);
 
   return (
     <div className="grid grid-cols-2 items-center py-2 px-1 ">

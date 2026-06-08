@@ -5,13 +5,12 @@ import { Prisma, ProjectImage } from "@/lib/generated/prisma/client";
 import EditorHeader from "@/components/editor/editor-header";
 import EditorTools from "@/components/editor/editor-tools";
 import { useFabricCanvas } from "@/hooks/useFabricCanvas";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelLeft, PanelLeftClose, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { updateProject, uploadImage } from "@/app/actions";
 import FloatingTopMenu from "@/components/editor/floating-top-menu";
 import DrawMenu from "@/components/editor/draw-menu";
-
 
 interface CollageEditorProps {
   project: Project;
@@ -24,6 +23,7 @@ export default function CollageEditor({
 }: CollageEditorProps) {
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const canvasAreaRef = useRef<HTMLDivElement>(null);
+  const handleSaveRef = useRef<() => void>(null);
   const [activeTab, setActiveTab] = useState("upload");
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
@@ -32,6 +32,13 @@ export default function CollageEditor({
   const [isToolsOpen, setIsToolsOpen] = useState(false);
   const [activeColorProperty, setActiveColorProperty] = useState<string>("");
   const [isCustomGrid, setIsCustomGrid] = useState(false);
+  const [activeColors, setActiveColors] = useState<string[]>([]);
+  const handleLoaded = useCallback(() => {
+    setIsCanvasReady(true);
+  }, [setIsCanvasReady]);
+  const handleCanvasChange = useCallback(() => {
+    handleSaveRef.current?.();
+  }, []);
   const {
     canvasRef,
     addText,
@@ -53,7 +60,6 @@ export default function CollageEditor({
     changeTextAlignment,
     flipObject,
     changeStrokeWidth,
-    activeColors,
     getAllColors,
     changeActiveObjectColor,
     changeFontSize,
@@ -61,51 +67,32 @@ export default function CollageEditor({
     applyImageFilter,
   } = useFabricCanvas({
     canvasState: project.canvasState,
-    onLoaded: () => setIsCanvasReady(true),
-    onCanvasChange: handleSave,
+    onLoaded: handleLoaded,
+    onCanvasChange: handleCanvasChange,
   });
 
-  useEffect(() => {
-    const observer = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      setContainerSize({ width, height });
-    });
-    if (canvasAreaRef.current) observer.observe(canvasAreaRef.current);
-    return () => observer.disconnect();
-  }, []);
+  type ProjectUpdates = Omit<
+    Partial<Project>,
+    "canvasState" | "thumbnailUrl"
+  > & { canvasState?: Prisma.InputJsonValue; thumbnailUrl?: string };
 
-  const padding =
-    typeof window !== "undefined" && window.innerWidth < 768 ? 32 : 72;
+  const handleUpdate = useCallback(
+    async (update: ProjectUpdates) => {
+      setIsSaving(true);
+      try {
+        await updateProject(project.id, update);
+      } catch (error) {
+        console.error("Update error:", error);
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [project.id],
+  );
 
-  const availableWidth = Math.max(0, containerSize.width - padding);
-  const availableHeight = Math.max(0, containerSize.height - padding);
+  const handleSave = useCallback(async () => {
+    if (!isCanvasReady) return;
 
-  const scale =
-    containerSize.width && containerSize.height
-      ? Math.min(
-          availableWidth / project.canvasWidth,
-          availableHeight / project.canvasHeight,
-        )
-      : 1;
-
-  const canvasWrapperClass =
-    "flex-1 flex items-center justify-center overflow-hidden w-full h-full relative bg-gradient-to-r from-purple-500 to-pink-500 " +
-    "md:shadow-lg md:rounded-tl-lg md:border md:border-slate-200 dark:md:border-slate-700 md:mt-2 md:ml-2";
-
-    type ProjectUpdates = Omit<Partial<Project>, 'canvasState' | 'thumbnailUrl'> & {canvasState?: Prisma.InputJsonValue; thumbnailUrl?: string; };
-
-  async function handleUpdate(update: ProjectUpdates) {
-    setIsSaving(true);
-    try {
-      await updateProject(project.id, update);
-    } catch (error) {
-      console.error("Update error:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function handleSave() {
     let thumbnailUrl = project.thumbnailUrl;
     const thumbnail = generateThumbnail();
     if (thumbnail) {
@@ -127,7 +114,47 @@ export default function CollageEditor({
       canvasState: json,
       thumbnailUrl: thumbnailUrl ?? undefined,
     });
-  }
+  }, [
+    isCanvasReady,
+    project.id,
+    project.thumbnailUrl,
+    project.title,
+    title,
+    getJson,
+    generateThumbnail,
+    handleUpdate,
+  ]);
+
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setContainerSize({ width, height });
+    });
+    if (canvasAreaRef.current) observer.observe(canvasAreaRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
+
+  const padding =
+    typeof window !== "undefined" && window.innerWidth < 768 ? 32 : 72;
+
+  const availableWidth = Math.max(0, containerSize.width - padding);
+  const availableHeight = Math.max(0, containerSize.height - padding);
+
+  const scale =
+    containerSize.width && containerSize.height
+      ? Math.min(
+          availableWidth / project.canvasWidth,
+          availableHeight / project.canvasHeight,
+        )
+      : 1;
+
+  const canvasWrapperClass =
+    "flex-1 flex items-center justify-center overflow-hidden w-full h-full relative bg-gradient-to-r from-purple-500 to-pink-500 " +
+    "md:shadow-lg md:rounded-tl-lg md:border md:border-slate-200 dark:md:border-slate-700 md:mt-2 md:ml-2";
 
   async function handleUpdateGrid(grid: { rows: number; cols: number }) {
     handleUpdate({
@@ -136,11 +163,11 @@ export default function CollageEditor({
     });
   }
 
-  async function handleUpdateName() {
-    handleUpdate({
+  const handleUpdateName = useCallback(async () => {
+    await handleUpdate({
       title: title,
     });
-  }   
+  }, [title, handleUpdate]);
 
   const handleTab = (tab: string, property?: string) => {
     const isSameTab = activeTab === tab;
@@ -153,15 +180,12 @@ export default function CollageEditor({
       setActiveTab("");
       setActiveColorProperty("");
     } else {
+      setActiveColors(getAllColors());
       setIsPanelOpen(true);
       setActiveTab(tab);
       if (property) setActiveColorProperty(property);
     }
   };
-
-  useEffect(() => {
-    getAllColors();
-  }, [activeObject, getAllColors]);
 
   // console.log(activeObject);
 
